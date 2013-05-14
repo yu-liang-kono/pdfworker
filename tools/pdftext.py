@@ -27,7 +27,7 @@ def create_argument_parser():
     parser = argparse.ArgumentParser(
                 description='Extract text geometry information from a PDF',
              )
-    parser.add_argument('--period', type=int, default=10,
+    parser.add_argument('--period', type=int, default=5,
                         help=('Due to memory issue, we have to restart '
                               'webdriver after viewing such pages. Set it to '
                               'a small value will be more robust but slow, '
@@ -47,6 +47,8 @@ def create_argument_parser():
                         help=('Output every page JSON in this directory'))
     parser.add_argument('--output', type=str, default=None,
                         help=('PDF document output JSON'))
+    parser.add_argument('--browser', type=str, default='firefox',
+                        help=('Either firefox or chrome'))
     parser.add_argument('PDF-file')
 
     return parser
@@ -107,9 +109,8 @@ if __name__ == "__main__":
         page_cb = lambda x: output_page_json(x, dirname=dirname)
 
     pdf_filename = arg_dict['PDF-file'].decode('utf8')
-    pdf_doc = PDFBrowser(pdf_filename).run(pages=pages,
-                                                   scale=arg_dict['scale'],
-                                                   page_rendered_cb=page_cb)
+    pdf_doc = PDFBrowser(pdf_filename, arg_dict['browser'])
+    pdf_doc.run(pages=pages, scale=arg_dict['scale'], page_rendered_cb=page_cb)
 
     # write output
     if arg_dict['output'] is None:

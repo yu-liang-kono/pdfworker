@@ -6,8 +6,9 @@ import os.path
 
 # third party related imports
 from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.wait import WebDriverWait
 
 # local library imports
@@ -37,6 +38,8 @@ class PDFBrowser(object):
     # The pdf viewer html page
     HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              '..', 'pdfjs', 'web', 'viewer.html')
+    CHROME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               '..', 'chromedriver')
     # If loading pdf takes more time than it, raise exception
     GLOBAL_TIMEOUT = 15
     # Available scales
@@ -55,8 +58,9 @@ class PDFBrowser(object):
     # The main div contains all pdf page
     VIEWER_ID = 'viewer'
 
-    def __init__(self, filename):
+    def __init__(self, filename, driver='firefox'):
 
+        self.driver = driver
         self.browser = None
         self.num_page_viewed = 0
         self.abs_filename = os.path.abspath(filename)
@@ -78,11 +82,18 @@ class PDFBrowser(object):
 
         if self.browser is not None:
             try:
+                #self.browser.refresh()
                 self.browser.quit()
             except Exception, e:
                 pass
 
-        self.browser = webdriver.Firefox()
+        if self.browser == 'firefox':
+            self.browser = webdriver.Firefox()
+        else:
+            opt = Options()
+            opt.add_argument('--allow-file-access-from-files')
+            self.browser = webdriver.Chrome(executable_path=self.CHROME_PATH,
+                                            chrome_options=opt)
         self.num_page_viewed = 0
         self._open_pdf()
         self._set_scale(scale)
