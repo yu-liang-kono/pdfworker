@@ -145,7 +145,7 @@ class PDFBrowser(object):
             page_cb = page_rendered_cb
 
         if pages is None:
-            pages = xrange(re.num_pages)
+            pages = xrange(ret.num_pages)
 
         for page_ix in pages:
             page = self.get_page(page_ix, scale)
