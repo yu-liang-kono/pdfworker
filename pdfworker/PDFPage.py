@@ -59,22 +59,25 @@ class PDFPage(object):
             }
 
             # out of bounding box text are removed
-            if block['x'] + block['width'] <= 0 or block['x'] >= ret.width:
-                if block['y'] + block['height'] <= 0 or block['y'] >= ret.height:
+            if  block['x'] + block['w'] <= 0 or block['x'] >= ret.width or \
+                block['y'] + block['h'] <= 0 or block['y'] >= ret.height:
                     continue
 
             ret.data.append(block)
 
         return ret
 
-    def serialize(self):
-        """Serialize to JSON"""
+    def __json__(self):
 
-        ret = {
+        return {
                 'page': self.page_num,
                 'width': self.width,
                 'height': self.height,
                 'data': self.data
         }
 
-        return ujson.dumps(ret, ensure_ascii=False)
+    def serialize(self):
+        """Serialize to JSON"""
+
+        return ujson.dumps(self.__json__(), ensure_ascii=False)
+

@@ -36,7 +36,7 @@ class PDFBrowser(object):
 
     # The pdf viewer html page
     HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             'pdfjs', 'web', 'viewer.html')
+                             '..', 'pdfjs', 'web', 'viewer.html')
     # If loading pdf takes more time than it, raise exception
     GLOBAL_TIMEOUT = 15
     # Available scales
@@ -120,18 +120,16 @@ class PDFBrowser(object):
         if self.num_page_viewed >= self.MAX_PAGE_VIEWED:
             self._refresh_browser(scale)
 
-        f = open('page%03d.json' % page_num, 'wb')
-        f.write(page.serialize())
-        f.close()
-
         return page
 
-    def run(self, pages=None, scale=1):
+    def run(self, pages=None, scale=1, page_rendered_cb=None):
         """The entry to start parse pdf.
 
         Args:
             filename: A string, PDF filename.
             pages: A list containing what pages we want to parse.
+            page_rendered_cb: A callable which will be called after
+                a page is rendered.
 
         Returns:
             An instance of PDFDocument.
@@ -142,8 +140,17 @@ class PDFBrowser(object):
 
         self._init_browser(scale)
 
-        for page_ix in xrange(ret.num_pages):
-            ret.add_page(page_ix, self.get_page(page_ix, scale))
+        page_cb = lambda x: x
+        if callable(page_rendered_cb):
+            page_cb = page_rendered_cb
+
+        if pages is None:
+            pages = xrange(re.num_pages)
+
+        for page_ix in pages:
+            page = self.get_page(page_ix, scale)
+            ret.add_page(page_ix, page)
+            page_cb(page)
 
         self.browser.quit()
 

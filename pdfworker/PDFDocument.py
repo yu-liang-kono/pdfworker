@@ -6,6 +6,7 @@ import os.path
 import subprocess
 
 # third party related imports
+import ujson
 
 # local library imports
 
@@ -72,4 +73,18 @@ class PDFDocument(object):
         """A list of PDFPage instances."""
 
         return self.__pages
+
+    def __json__(self):
+
+        return {
+                'file': os.path.basename(self.__filename),
+                'page': self.num_pages,
+                'data': map(lambda p: p.__json__(),
+                            filter(lambda p: p is not None, self.__pages)),
+        }
+
+    def serialize(self):
+        """Serialize to JSON"""
+
+        return ujson.dumps(self.__json__(), ensure_ascii=False)
 
