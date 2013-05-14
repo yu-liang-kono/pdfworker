@@ -104,7 +104,11 @@ class PDFBrowser(object):
             self._init_browser()
 
         page_num = page_ix + 1
-        self._go_to_page(page_num, scale)
+
+        try:
+            self._go_to_page(page_num, scale)
+        except TimeoutException:
+            logger.error('Render page %s timeout', page_num)
 
         elem = self.browser.find_element_by_id('pageContainer%s' % page_num)
         text_elem = elem.find_element_by_class_name('textLayer')
