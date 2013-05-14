@@ -89,19 +89,19 @@ if __name__ == "__main__":
 
     arg_parser = create_argument_parser()
     arg_dict = vars(arg_parser.parse_args())
-    #print arg_dict
+    print arg_dict
 
-    PDFBrowser.GLOBAL_TIMEOUT = arg_dict['period']
-    PDFBrowser.MAX_PAGE_VIEWED = arg_dict['timeout']
+    PDFBrowser.GLOBAL_TIMEOUT = arg_dict['timeout']
+    PDFBrowser.MAX_PAGE_VIEWED = arg_dict['period']
 
     # determine what pages to be parsed
     pages = parse_pages(arg_dict['pages'])
 
     # set up dumping page json directory
-    page_dir = arg_dict['pagedir'].decode('utf8')
+    page_dir = arg_dict['pagedir']
     page_cb = lambda x: x
     if page_dir is not None:
-        dirname = os.path.abspath(page_dir)
+        dirname = os.path.abspath(page_dir.decode('utf8'))
         if not os.path.exists(dirname):
             os.mkdir(dirname)
         page_cb = lambda x: output_page_json(x, dirname=dirname)
