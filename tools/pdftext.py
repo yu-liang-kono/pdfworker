@@ -27,13 +27,13 @@ def create_argument_parser():
     parser = argparse.ArgumentParser(
                 description='Extract text geometry information from a PDF',
              )
-    parser.add_argument('--period', type=int, default=15,
+    parser.add_argument('--period', type=int, default=10,
                         help=('Due to memory issue, we have to restart '
                               'webdriver after viewing such pages. Set it to '
                               'a small value will be more robust but slow, '
                               ', however, set it to a large value will save '
                               'time but subject to memory issue.'))
-    parser.add_argument('--timeout', type=int, default=15,
+    parser.add_argument('--timeout', type=int, default=30,
                         help=('Wait for such seconds when webdriver renders '
                               'a PDF page.'))
     parser.add_argument('--scale', type=float, default=1,
@@ -89,6 +89,7 @@ if __name__ == "__main__":
 
     arg_parser = create_argument_parser()
     arg_dict = vars(arg_parser.parse_args())
+    #print arg_dict
 
     PDFBrowser.GLOBAL_TIMEOUT = arg_dict['period']
     PDFBrowser.MAX_PAGE_VIEWED = arg_dict['timeout']
@@ -97,26 +98,27 @@ if __name__ == "__main__":
     pages = parse_pages(arg_dict['pages'])
 
     # set up dumping page json directory
-    page_dir = arg_dict['pagedir']
+    page_dir = arg_dict['pagedir'].decode('utf8')
     page_cb = lambda x: x
     if page_dir is not None:
-        dirname = os.path.abspath(os.path.dirname(page_dir))
+        dirname = os.path.abspath(page_dir)
         if not os.path.exists(dirname):
             os.mkdir(dirname)
         page_cb = lambda x: output_page_json(x, dirname=dirname)
 
-    pdf_doc = PDFBrowser(arg_dict['PDF-file']).run(pages=pages,
+    pdf_filename = arg_dict['PDF-file'].decode('utf8')
+    pdf_doc = PDFBrowser(pdf_filename).run(pages=pages,
                                                    scale=arg_dict['scale'],
                                                    page_rendered_cb=page_cb)
 
     # write output
     if arg_dict['output'] is None:
-        basename = os.path.basename(arg_dict['PDF-file'])
+        basename = os.path.basename(pdf_filename)
         (basename, ext) = os.path.splitext(basename)
         output = basename + '.json'
     else:
-        output = arg_dict['output']
+        output = arg_dict['output'].decode('utf8')
 
-    with closing(open(basename + '.json', 'wb')) as f:
+    with closing(open(output, 'wb')) as f:
         f.write(pdf_doc.serialize())
 
