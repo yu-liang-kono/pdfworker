@@ -61,7 +61,7 @@ def parse_pages(user_input):
 
     for p in pages:
         if p.isdigit():
-            ret.append(int(p))
+            ret.append(int(p) - 1)
             continue
 
         match_obj = re.match(r'(\d+)\-(\d+)', p)
