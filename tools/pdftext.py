@@ -27,28 +27,24 @@ def create_argument_parser():
     parser = argparse.ArgumentParser(
                 description='Extract text geometry information from a PDF',
              )
-    parser.add_argument('--period', type=int, default=5,
-                        help=('Due to memory issue, we have to restart '
-                              'webdriver after viewing such pages. Set it to '
-                              'a small value will be more robust but slow, '
-                              ', however, set it to a large value will save '
-                              'time but subject to memory issue.'))
-    parser.add_argument('--timeout', type=int, default=30,
+    parser.add_argument('--timeout', type=int, default=10,
                         help=('Wait for such seconds when webdriver renders '
-                              'a PDF page.'))
+                              'a PDF page. Default is 10 seconds.'))
     parser.add_argument('--scale', type=float, default=1,
                         help='Render PDF page at this scale. Possible ' + \
                              'values are ' + \
-                              ', '.join(PDFBrowser.AVAILABLE_SCALES))
+                             ', '.join(PDFBrowser.AVAILABLE_SCALES) + \
+                             '. Default is 1')
     parser.add_argument('--pages', type=str, default=None,
                         help=('Render the specified pages: e.g. '
-                              '1,2,3 or 1-10 or 1-10,20,30'))
+                              '1,2,3 or 1-10 or 1-10,20,30. '
+                              'Default is all pages.'))
     parser.add_argument('--pagedir', type=str, default=None,
                         help=('Output every page JSON in this directory'))
     parser.add_argument('--output', type=str, default=None,
                         help=('PDF document output JSON'))
-    parser.add_argument('--browser', type=str, default='firefox',
-                        help=('Either firefox or chrome'))
+    parser.add_argument('--browser', type=str, default='chrome',
+                        help=('Either firefox or chrome. Default is chrome.'))
     parser.add_argument('PDF-file')
 
     return parser
@@ -94,7 +90,6 @@ if __name__ == "__main__":
     print arg_dict
 
     PDFBrowser.GLOBAL_TIMEOUT = arg_dict['timeout']
-    PDFBrowser.MAX_PAGE_VIEWED = arg_dict['period']
 
     # determine what pages to be parsed
     pages = parse_pages(arg_dict['pages'])
@@ -109,8 +104,9 @@ if __name__ == "__main__":
         page_cb = lambda x: output_page_json(x, dirname=dirname)
 
     pdf_filename = arg_dict['PDF-file'].decode('utf8')
-    pdf_doc = PDFBrowser(pdf_filename, arg_dict['browser'])
-    pdf_doc.run(pages=pages, scale=arg_dict['scale'], page_rendered_cb=page_cb)
+    pdf_browser = PDFBrowser(pdf_filename, arg_dict['browser'])
+    pdf_doc = pdf_browser.run(pages=pages, scale=arg_dict['scale'],
+                              page_rendered_cb=page_cb)
 
     # write output
     if arg_dict['output'] is None:

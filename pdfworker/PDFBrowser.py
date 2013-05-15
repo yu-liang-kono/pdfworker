@@ -14,6 +14,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 # local library imports
 from PDFDocument import PDFDocument
 from PDFPage import PDFPage
+from util import time_limit, TimeLimitException
 
 
 class PDFBrowserError(Exception): pass
@@ -26,8 +27,8 @@ class PDFBrowser(object):
     information.
 
     Attributes:
+        driver: A string either 'firefox' or 'chrome'
         browser: An instance of selenium Firefox.
-        num_page_viewed: An integer to indicating how many pages have
             been viewed. Due to the memory issue, we have to refresh
             browser after viewing a number of pages.
         abs_filename: A string inidcating the absolute path of the
@@ -42,11 +43,10 @@ class PDFBrowser(object):
                                '..', 'chromedriver')
     # If loading pdf takes more time than it, raise exception
     GLOBAL_TIMEOUT = 15
+    # If rendering a page over this limit, we just give up.
+    GIVEUP_TIMEOUT = 60
     # Available scales
     AVAILABLE_SCALES = ('0.5', '0.75', '1', '1.25', '1.5', '2')
-    # Due to some memory issue, we have to refresh browser after viewing
-    # such number of pages.
-    MAX_PAGE_VIEWED = 20
 
     OUTER_CONTAINER_ID = 'outerContainer'
     # The <input type="file"> to load pdf
@@ -62,8 +62,8 @@ class PDFBrowser(object):
 
         self.driver = driver
         self.browser = None
-        self.num_page_viewed = 0
         self.abs_filename = os.path.abspath(filename)
+        self.num_retry = 0
 
         # ensure file exist
         if not os.path.exists(self.abs_filename):
@@ -92,9 +92,10 @@ class PDFBrowser(object):
         else:
             opt = Options()
             opt.add_argument('--allow-file-access-from-files')
+            opt.add_argument('--disable-logging')
             self.browser = webdriver.Chrome(executable_path=self.CHROME_PATH,
                                             chrome_options=opt)
-        self.num_page_viewed = 0
+
         self._open_pdf()
         self._set_scale(scale)
 
@@ -118,24 +119,50 @@ class PDFBrowser(object):
 
         try:
             self._go_to_page(page_num, scale)
+
+            page_id = 'pageContainer%s' % page_num
+            get_dom_script = "return arguments[0].innerHTML"
+
+            try:
+                with time_limit(self.GLOBAL_TIMEOUT + 1):
+                    # get textLayer
+                    elem = self.browser.find_element_by_id(page_id)
+                    text_elem = elem.find_element_by_class_name('textLayer')
+                    text_dom = self.browser.execute_script(get_dom_script,
+                                                           text_elem)
+                    # get canvas
+                    canvas_elem = elem.find_element_by_tag_name('canvas')
+                    width = int(canvas_elem.get_attribute('width'))
+                    height = int(canvas_elem.get_attribute('height'))
+            except TimeLimitException:
+                raise TimeoutException
+
         except TimeoutException:
             logger.error('Render page %s timeout', page_num)
 
-        elem = self.browser.find_element_by_id('pageContainer%s' % page_num)
-        text_elem = elem.find_element_by_class_name('textLayer')
-        text_dom = self.browser.execute_script('return arguments[0].innerHTML',
-                                               text_elem)
-        canvas_elem = elem.find_element_by_tag_name('canvas')
-        width = int(canvas_elem.get_attribute('width'))
-        height = int(canvas_elem.get_attribute('height'))
+            try:
+                with time_limit(1):
+                    self.browser.quit()
+            except Exception:
+                pass
+            finally:
+                self.browser = None
+                self.num_retry += 1
+                self.GLOBAL_TIMEOUT += 2 ** self.num_retry
 
-        page = PDFPage.create_by_pdfjs(page_num, width, height, text_dom)
+                if self.GLOBAL_TIMEOUT > self.GIVEUP_TIMEOUT:
+                    logger.error("Can't render page %s", page_num)
+                    return None
 
-        self.num_page_viewed += 1
-        if self.num_page_viewed >= self.MAX_PAGE_VIEWED:
-            self._refresh_browser(scale)
+                logger.warning('extend timeout to %s seconds',
+                               self.GLOBAL_TIMEOUT)
+                return self.get_page(page_ix, scale)
 
-        return page
+        if self.num_retry != 0:
+            self.GLOBAL_TIMEOUT -= 2 ** self.num_retry
+            self.num_retry = 0
+
+        return PDFPage.create_by_pdfjs(page_num, width, height, text_dom)
 
     def run(self, pages=None, scale=1, page_rendered_cb=None):
         """The entry to start parse pdf.
@@ -206,14 +233,22 @@ class PDFBrowser(object):
     def _go_to_page(self, page_num, scale=1):
         """Go to the specified page number."""
 
-        elem = self.browser.find_element_by_id(self.PAGE_INPUT_ID)
-        self._fill(elem, str(page_num), pass_newline=True)
+        try:
+            with time_limit(self.GLOBAL_TIMEOUT):
+                elem = self.browser.find_element_by_id(self.PAGE_INPUT_ID)
+                self._fill(elem, str(page_num), pass_newline=True)
+        except TimeLimitException:
+            raise TimeoutException
 
         # wait until pdf page is loaded
-        message = 'Rendering page %s takes more than %s seconds' % \
+        try:
+            with time_limit(self.GLOBAL_TIMEOUT + 1):
+                wait = WebDriverWait(self.browser, self.GLOBAL_TIMEOUT, 0.1)
+                wait.until(lambda browser: self._is_page_loaded(browser, page_num))
+        except TimeLimitException:
+            msg = 'Rendering page %s takes more than %s seconds' % \
                   (page_num, self.GLOBAL_TIMEOUT)
-        wait = WebDriverWait(self.browser, self.GLOBAL_TIMEOUT, 0.1)
-        wait.until(lambda browser: self._is_page_loaded(browser, page_num))
+            raise TimeoutException(msg)
 
     def _set_scale(self, scale):
         """Set the pdf viewer scale option."""
