@@ -2,6 +2,7 @@
 
 # standard library imports
 import logging as logger
+import re
 import time
 
 # third party related imports
@@ -21,6 +22,8 @@ class PDFPage(object):
         data: A JSON.
 
     """
+
+    RE_TRANSFORM = re.compile(r'scale\(([-+]?[0-9]*\.?[0-9]+), ([-+]?[0-9]*\.?[0-9]+)\)')
 
     def __init__(self):
 
@@ -50,9 +53,19 @@ class PDFPage(object):
                         style)
             style = dict(style)
 
+            s = style.get('-webkit-transform') or style.get('transform')
+            match_obj = cls.RE_TRANSFORM.search(s)
+            if match_obj is None:
+                sx, sy = 1, 1
+                print s
+            else:
+                sx, sy = float(match_obj.group(1)), float(match_obj.group(2))
+
             block = {
                 'w': float(child.attrib.get('data-canvas-width', 0)),
                 'h': float(style.get('font-size', '0px')[:-2]),
+                'sx': sx,
+                'sy': sy,
                 'x': float(style.get('left', '0px')[:-2]),
                 'y': float(style.get('top', '0px')[:-2]),
                 't': child.text,
