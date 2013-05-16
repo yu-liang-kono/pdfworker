@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
 # standard library imports
-import re
 import os.path
+import re
 import subprocess
+import time
 
 # third party related imports
 import ujson
@@ -77,6 +78,7 @@ class PDFDocument(object):
     def __json__(self):
 
         return {
+                'version': int(time.time()),
                 'file': os.path.basename(self.__filename),
                 'page': self.num_pages,
                 'data': map(lambda p: p.__json__(),
