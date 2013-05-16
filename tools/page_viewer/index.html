@@ -1,0 +1,45 @@
+<!doctype html>
+<html ng-app>
+	<link href="http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css" rel="stylesheet">
+	<style>
+		#page {
+			border: 1px solid #000;
+			position: relative;
+		}
+
+		.text {
+			font-family: sans-serif;
+			position: absolute;
+			line-height: 1;
+			white-space: pre;
+		}
+	</style>
+
+	<div class="container" ng-controller="PageController">
+		<div class="row">
+			<div class="span2">
+				<form ng-submit="readFile()">
+					<input type="file" id="file-input" />
+					<button class="btn btn-primary">submit</button>
+				</form>
+				<hr/>
+				KMeans:
+				<input type="number" min="1" value="1" ng-model="numCluster" class="input-mini" />
+				<button class="btn btn-primary" ng-click="kmeans()">run</button>
+			</div>
+			<div class="span10">
+				<div id="page" style="width: {{pageData.width}}px; height: {{pageData.height}}px;">
+					<div ng-repeat="data in pageData.data" class="text"
+						 style="top: {{data.y}}px; left: {{data.x}}px; font-size: {{data.h}}px; -webkit-transform-origin: 0 0; -webkit-transform: scale({{data.sx}}, {{data.sy}}); background-color: {{getClusterColor(data.c)}}"><!--
+						-->{{data.t}}<!--
+					--></div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.4.4/underscore-min.js"></script>
+	<script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.0.6/angular.min.js"></script>
+	<script src="controller.js"></script>
+
+</html>
