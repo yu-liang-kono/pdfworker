@@ -6,7 +6,9 @@ import os.path
 
 # third party related imports
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import (NoSuchElementException,
+                                        TimeoutException,
+                                        WebDriverException)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.wait import WebDriverWait
@@ -39,8 +41,10 @@ class PDFBrowser(object):
     # The pdf viewer html page
     HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              '..', 'pdfjs', 'web', 'viewer.html')
-    CHROME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               '..', 'chromedriver')
+    CHROME64_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 '..', 'chromedriver64')
+    CHROME32_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 '..', 'chromedriver32')
     # If loading pdf takes more time than it, raise exception
     GLOBAL_TIMEOUT = 15
     # If rendering a page over this limit, we just give up.
@@ -93,8 +97,16 @@ class PDFBrowser(object):
             opt = Options()
             opt.add_argument('--allow-file-access-from-files')
             opt.add_argument('--disable-logging')
-            self.browser = webdriver.Chrome(executable_path=self.CHROME_PATH,
-                                            chrome_options=opt)
+            try:
+                self.browser = webdriver.Chrome(
+                                    executable_path=self.CHROME64_PATH,
+                                    chrome_options=opt
+                               )
+            except WebDriverException:
+                self.browser = webdriver.Chrome(
+                                    executable_path=self.CHROME32_PATH,
+                                    chrome_options=opt
+                               )
 
         self._open_pdf()
         self._set_scale(scale)
