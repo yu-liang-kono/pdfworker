@@ -4,6 +4,7 @@
 import logging as logger
 import re
 import time
+import sys
 
 # third party related imports
 from pyquery import PyQuery
@@ -54,12 +55,11 @@ class PDFPage(object):
             style = dict(style)
 
             s = style.get('-webkit-transform') or style.get('transform')
-            match_obj = cls.RE_TRANSFORM.search(s)
-            if match_obj is None:
-                sx, sy = 1, 1
-                print s
-            else:
+            try:
+                match_obj = cls.RE_TRANSFORM.search(s)
                 sx, sy = float(match_obj.group(1)), float(match_obj.group(2))
+            except Exception:
+                sx, sy = 1, 1
 
             block = {
                 'w': float(child.attrib.get('data-canvas-width', 0)),
