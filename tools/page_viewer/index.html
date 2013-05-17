@@ -5,6 +5,7 @@
 		#page {
 			border: 1px solid #000;
 			position: relative;
+			min-height: 126px;
 		}
 
 		.text {
@@ -13,21 +14,39 @@
 			line-height: 1;
 			white-space: pre;
 		}
+
+		.form-inline {
+			margin-bottom: 0;
+		}
 	</style>
 
 	<div class="container" ng-controller="PageController">
 		<div class="row">
-			<div class="span2">
-				<form ng-submit="readFile()">
-					<input type="file" id="file-input" />
-					<button class="btn btn-primary">submit</button>
-				</form>
-				<hr/>
-				KMeans:
-				<input type="number" min="1" value="1" ng-model="numCluster" class="input-mini" />
-				<button class="btn btn-primary" ng-click="kmeans()">run</button>
+			<div class="span3">
+				<table class="table table-bordered">
+					<thead></thead>
+					<tbody>
+						<tr>
+							<td>
+								<form ng-submit="readFile()" class="form-inline">
+									<input type="file" id="file-input" />
+									<button class="btn btn-primary">submit</button>
+								</form>
+							</td>
+						</tr>
+						<tr>
+							<td>
+								<form ng-submit="kmeans()" class="form-inline">
+									KMeans:
+									<input type="number" min="1" value="1" ng-model="numCluster" class="input-mini" />
+									<button class="btn btn-primary">run</button>
+								</form>
+							</td>
+						</tr>
+					</tbody>
+				</table>
 			</div>
-			<div class="span10">
+			<div class="span9">
 				<div id="page" style="width: {{pageData.width}}px; height: {{pageData.height}}px;">
 					<div ng-repeat="data in pageData.data" class="text"
 						 style="top: {{data.y}}px; left: {{data.x}}px; font-size: {{data.h}}px; -webkit-transform-origin: 0 0; -webkit-transform: scale({{data.sx}}, {{data.sy}}); background-color: {{getClusterColor(data.c)}}"><!--
