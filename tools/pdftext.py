@@ -87,7 +87,6 @@ if __name__ == "__main__":
 
     arg_parser = create_argument_parser()
     arg_dict = vars(arg_parser.parse_args())
-    print arg_dict
 
     PDFBrowser.GLOBAL_TIMEOUT = arg_dict['timeout']
 
