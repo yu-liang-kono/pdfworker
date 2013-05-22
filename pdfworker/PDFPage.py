@@ -94,3 +94,17 @@ class PDFPage(object):
 
         return ujson.dumps(self.__json__(), ensure_ascii=False)
 
+    @classmethod
+    def create_by_json(cls, serialized):
+        """Deserialize to PDFPage."""
+
+        deserialized = ujson.loads(serialized)
+
+        ret = PDFPage()
+        ret.page_num = deserialized.get('page', 0)
+        ret.width = deserialized.get('width', 0)
+        ret.height = deserialized.get('height', 0)
+        ret.data = deserialized.get('data')
+
+        return ret
+
