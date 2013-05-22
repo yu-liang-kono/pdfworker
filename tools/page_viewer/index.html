@@ -43,13 +43,23 @@
 								</form>
 							</td>
 						</tr>
+						<tr>
+							<td>
+								<form ng-submit="hierarchyCluster()" class="form-inline">
+									Hierarchy Cluster:
+									<input type="number" min="1" ng-model="numHierarchyCluster" class="input-mini" />
+									<button class="btn btn-primary">run</button>
+								</form>
+							</td>
+						</tr>
 					</tbody>
 				</table>
 			</div>
 			<div class="span9">
 				<div id="page" style="width: {{pageData.width}}px; height: {{pageData.height}}px;">
 					<div ng-repeat="data in pageData.data" class="text"
-						 style="top: {{data.y}}px; left: {{data.x}}px; font-size: {{data.h}}px; -webkit-transform-origin: 0 0; -webkit-transform: scale({{data.sx}}, {{data.sy}}); background-color: {{getClusterColor(data.c)}}"><!--
+						 style="top: {{data.y}}px; left: {{data.x}}px; font-size: {{data.h}}px; -webkit-transform-origin: 0 0; -webkit-transform: scale({{data.sx}}, {{data.sy}}); background-color: {{getClusterColor(data.c)}}"
+						 title="{{data.c}}"><!--
 						-->{{data.t}}<!--
 					--></div>
 				</div>
@@ -59,6 +69,7 @@
 
 	<script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.4.4/underscore-min.js"></script>
 	<script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.0.6/angular.min.js"></script>
+	<script src="TextRectangle.js"></script>
 	<script src="controller.js"></script>
 
 </html>

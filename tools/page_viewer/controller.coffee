@@ -86,6 +86,63 @@ PageController = ($scope) ->
 		_.each($scope.cluster, (c, i) -> $scope.pageData.data[i].c = c)
 		return
 
+	$scope.numHierarchyCluster = 1
+	$scope.hierarchyCluster = () ->
+
+		rectangleGroupIndices = []
+		allRectangleGroups = {}
+
+		# initialize
+		for data, i in $scope.pageData.data
+			$scope.cluster.push(i)
+			data.c = i
+
+			rect = new Rectangle(data.x, data.y, data.w, data.h)
+			rectGrp = new RectangleGroup(rect)
+
+			rectID = _.uniqueId()
+			allRectangleGroups[rectID] = rectGrp
+			rectangleGroupIndices.push(rectID)
+
+		while _.keys(allRectangleGroups).length > $scope.numHierarchyCluster
+			# compute rectangle distance between each rectangle
+			idGrpPairs = _.pairs allRectangleGroups
+
+			minDist = Infinity
+			closestPairs = null
+			for idGrpPair1, i in idGrpPairs
+				for idGrpPair2, j in idGrpPairs
+					if i >= j then continue
+
+					d = idGrpPair1[1].distance(idGrpPair2[1])
+					if d < minDist
+						minDist = d
+						closestPairs = [idGrpPair1[0], idGrpPair2[0]]
+
+			mergerID = closestPairs[0]
+			merger = allRectangleGroups[mergerID]
+			mergeeID = closestPairs[1]
+			mergee = allRectangleGroups[mergeeID]
+
+			# merge the closest rectangle pair
+			for rgi, k in rectangleGroupIndices
+				if rgi is mergeeID
+					rectangleGroupIndices[k] = mergerID
+
+			allRectangleGroups[mergerID] = merger.union(mergee)
+			delete allRectangleGroups[mergeeID]
+
+		clusterIndex = 0
+		for rectID, rect of allRectangleGroups
+			for rgi, i in rectangleGroupIndices
+				if rgi is rectID then $scope.pageData.data[i].c = clusterIndex
+
+			clusterIndex += 1
+
+		$scope.numCluster = $scope.numHierarchyCluster
+
+		return
+
 	return
 
 window.PageController = PageController

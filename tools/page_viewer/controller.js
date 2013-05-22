@@ -103,6 +103,67 @@
         return $scope.pageData.data[i].c = c;
       });
     };
+    $scope.numHierarchyCluster = 1;
+    $scope.hierarchyCluster = function() {
+      var allRectangleGroups, closestPairs, clusterIndex, d, data, i, idGrpPair1, idGrpPair2, idGrpPairs, j, k, mergee, mergeeID, merger, mergerID, minDist, rect, rectGrp, rectID, rectangleGroupIndices, rgi, _i, _j, _k, _l, _len, _len1, _len2, _len3, _len4, _m, _ref;
+
+      rectangleGroupIndices = [];
+      allRectangleGroups = {};
+      _ref = $scope.pageData.data;
+      for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
+        data = _ref[i];
+        $scope.cluster.push(i);
+        data.c = i;
+        rect = new Rectangle(data.x, data.y, data.w, data.h);
+        rectGrp = new RectangleGroup(rect);
+        rectID = _.uniqueId();
+        allRectangleGroups[rectID] = rectGrp;
+        rectangleGroupIndices.push(rectID);
+      }
+      while (_.keys(allRectangleGroups).length > $scope.numHierarchyCluster) {
+        idGrpPairs = _.pairs(allRectangleGroups);
+        minDist = Infinity;
+        closestPairs = null;
+        for (i = _j = 0, _len1 = idGrpPairs.length; _j < _len1; i = ++_j) {
+          idGrpPair1 = idGrpPairs[i];
+          for (j = _k = 0, _len2 = idGrpPairs.length; _k < _len2; j = ++_k) {
+            idGrpPair2 = idGrpPairs[j];
+            if (i >= j) {
+              continue;
+            }
+            d = idGrpPair1[1].distance(idGrpPair2[1]);
+            if (d < minDist) {
+              minDist = d;
+              closestPairs = [idGrpPair1[0], idGrpPair2[0]];
+            }
+          }
+        }
+        mergerID = closestPairs[0];
+        merger = allRectangleGroups[mergerID];
+        mergeeID = closestPairs[1];
+        mergee = allRectangleGroups[mergeeID];
+        for (k = _l = 0, _len3 = rectangleGroupIndices.length; _l < _len3; k = ++_l) {
+          rgi = rectangleGroupIndices[k];
+          if (rgi === mergeeID) {
+            rectangleGroupIndices[k] = mergerID;
+          }
+        }
+        allRectangleGroups[mergerID] = merger.union(mergee);
+        delete allRectangleGroups[mergeeID];
+      }
+      clusterIndex = 0;
+      for (rectID in allRectangleGroups) {
+        rect = allRectangleGroups[rectID];
+        for (i = _m = 0, _len4 = rectangleGroupIndices.length; _m < _len4; i = ++_m) {
+          rgi = rectangleGroupIndices[i];
+          if (rgi === rectID) {
+            $scope.pageData.data[i].c = clusterIndex;
+          }
+        }
+        clusterIndex += 1;
+      }
+      $scope.numCluster = $scope.numHierarchyCluster;
+    };
   };
 
   window.PageController = PageController;
