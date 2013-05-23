@@ -5,3 +5,4 @@ pyquery==1.2.4
 selenium==2.32.0
 wsgiref==0.1.2
 ujson
+pytest
