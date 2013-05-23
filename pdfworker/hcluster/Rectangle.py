@@ -96,7 +96,7 @@ class Rectangle(object):
             return 0
 
         min_dist = float('inf')
-        for (v1, v2) in product(self.vertices(), other.vertices()):
+        for v1, v2 in product(self.vertices, other.vertices):
             d = v1.square_dist(v2)
             if d < min_dist:
                 min_dist = d

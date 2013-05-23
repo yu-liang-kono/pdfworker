@@ -32,6 +32,16 @@ class TestRectangle(object):
         assert(r.vertices[3].x == r.x)
         assert(r.vertices[3].y == r.y + r.h)
 
+    def test_distance(self):
+
+        r1 = Rectangle(0, 0, 10, 10)
+        r2 = Rectangle(11, 11, 10, 10)
+        assert(r1.distance(r2), 2)
+
+        r1 = Rectangle(0, 0, 10, 10)
+        r2 = Rectangle(1, 1, 9, 9)
+        assert(r1.distance(r2) == 0)
+
     def test_intersect(self):
 
         r1 = Rectangle(0, 0, 10, 10)
@@ -40,7 +50,6 @@ class TestRectangle(object):
         assert(r1.intersect(r2) is None)
         assert(r2.intersect(r1) is None)
         assert(r1 & r2 is None)
-
         r1 &= r2
         assert(r1 is None)
 
@@ -50,7 +59,6 @@ class TestRectangle(object):
         assert(r1.intersect(r2) == expected)
         assert(r2.intersect(r1) == expected)
         assert(r1 & r2 == expected)
-
         r1 &= r2
         assert(r1 == expected)
 
@@ -62,7 +70,6 @@ class TestRectangle(object):
         assert(r1.union(r2) == expected)
         assert(r2.union(r1) == expected)
         assert(r1 | r2 == expected)
-
         r1 |= r2
         assert(r1 == expected)
 
@@ -70,7 +77,6 @@ class TestRectangle(object):
         expected = Rectangle(0, 0, 10, 10)
         assert(r1.union(r1) == expected)
         assert(r1 | r1 == expected)
-
         r1 |= r1
         assert(r1 == expected)
 
@@ -80,7 +86,6 @@ class TestRectangle(object):
         assert(r1.union(r2) == expected)
         assert(r2.union(r1) == expected)
         assert(r1 | r2 == expected)
-
         r1 |= r2
         assert(r1 == expected)
 
