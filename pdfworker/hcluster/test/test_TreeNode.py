@@ -5,7 +5,7 @@
 # third party related imports
 
 # local library imports
-from ..hcluster import TreeNode
+from ..hcluster import TreeNode, create_dendrogram
 from ..Rectangle import Rectangle
 
 
@@ -68,3 +68,26 @@ class TestTreeNode(object):
 
         for ix, visitee in enumerate(node.dfs()):
             assert(visitee.data == ix)
+
+    def test_create_dendrogram(self):
+
+        nodes = (
+            TreeNode(Rectangle(0, 0, 1, 1), 0),
+            TreeNode(Rectangle(2, 2, 1, 1), 1),
+            TreeNode(Rectangle(4, 4, 1, 1), 2),
+            TreeNode(Rectangle(6, 6, 1, 1), 3),
+        )
+
+        dendrograms = create_dendrogram(nodes, max_num_cluster=3)
+        assert(dendrograms[0].mbr == nodes[0].agglomerate(nodes[1]).mbr)
+        assert(dendrograms[1].mbr == nodes[2].mbr)
+        assert(dendrograms[2].mbr == nodes[3].mbr)
+
+        dendrograms = create_dendrogram(nodes, max_num_cluster=2)
+        assert(dendrograms[0].mbr == \
+               nodes[0].agglomerate(nodes[1]).agglomerate(nodes[2]).mbr)
+        assert(dendrograms[1].mbr == nodes[3].mbr)
+
+        dendrograms = create_dendrogram(nodes, max_num_cluster=1)
+        assert(dendrograms[0].mbr == \
+               Rectangle(0, 0, 7, 7))

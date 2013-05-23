@@ -95,7 +95,7 @@ class TreeNode(IAgglomeratable):
             c.dfs()
 
 
-def create_dendrogram(self, leaves, max_num_cluster=1, onmerge=None):
+def create_dendrogram(leaves, max_num_cluster=1, onmerge=None):
     """Build the hierarchy cluster dendrogram in bottom up manner.
 
     Args:
@@ -111,9 +111,9 @@ def create_dendrogram(self, leaves, max_num_cluster=1, onmerge=None):
     """
 
     if not callable(onmerge):
-        onmerge = lambda (x, y): 1
+        onmerge = lambda x, y: 1
 
-    clusters = leaves
+    clusters = list(leaves)
     distance_cache = {}
 
     while len(clusters) > max_num_cluster:
@@ -147,7 +147,7 @@ def create_dendrogram(self, leaves, max_num_cluster=1, onmerge=None):
 
         # clear cache
         for key in distance_cache.keys():
-            if i in key or j in key:
+            if merger in key or mergee in key:
                 del distance_cache[key]
 
     return clusters
