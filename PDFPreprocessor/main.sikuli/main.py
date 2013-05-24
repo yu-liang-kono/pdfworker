@@ -49,15 +49,33 @@ def create_intermediate_dirs(pdf_files):
             print 'directory (', dir, ') already exists'
 
 
+def work_on(pdf_file):
+    """Main function."""
+
+    queue = [pdf_file]
+    output = []
+    
+    while len(queue) > 0:
+        file = queue[0]
+        #preview_export(pdf_file)
+        #convert_to_srgb(pdf_file)
+        #split_layer(pdf_file)
+        
+        queue = queue[1:]
+        output.append(file)
+        
 def do_preprocess(pdf_files):
     """Main loop for each pdf file."""
-    
+
+    for pdf_file in pdf_files:
+        work_on(pdf_file)
+
 def main():
 
     pdf_files = get_all_pdfs()
     create_intermediate_dirs(pdf_files)
-    for pdf_file in pdf_files:
-        print pdfutil.get_num_pages(os.path.join(cwd, pdf_file))
-    
+    do_preprocess(pdf_files)
+
+       
 if __name__ == "__main__":
     main()

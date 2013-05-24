@@ -121,15 +121,33 @@ DIR_FINAL = <span class="str">'final'</span>
             <span class="kw">print</span> <span class="str">'directory ('</span>, dir, <span class="str">') already exists'</span>
 
 
+<span class="kw">def</span> work_on(pdf_file):
+    <span class="str">"""Main function."""</span>
+
+    queue = [pdf_file]
+    output = []
+
+    <span class="kw">while</span> len(queue) &gt; <span class="dig">0</span>:
+        file = queue[<span class="dig">0</span>]
+        <span class="cmt">#preview_export(pdf_file)
+</span>        <span class="cmt">#convert_to_srgb(pdf_file)
+</span>        <span class="cmt">#split_layer(pdf_file)
+</span>
+        queue = queue[<span class="dig">1</span>:]
+        output.append(file)
+
 <span class="kw">def</span> do_preprocess(pdf_files):
     <span class="str">"""Main loop for each pdf file."""</span>
+
+    <span class="kw">for</span> pdf_file <span class="kw">in</span> pdf_files:
+        work_on(pdf_file)
 
 <span class="kw">def</span> main():
 
     pdf_files = get_all_pdfs()
     create_intermediate_dirs(pdf_files)
-    <span class="kw">for</span> pdf_file <span class="kw">in</span> pdf_files:
-        <span class="kw">print</span> pdfutil.get_num_pages(os.path.join(cwd, pdf_file))
+    do_preprocess(pdf_files)
+
 
 <span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
     main()
