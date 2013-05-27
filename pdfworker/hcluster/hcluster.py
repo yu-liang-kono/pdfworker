@@ -1,4 +1,4 @@
-#!/usr/bin/env
+#!/usr/bin/env python
 
 # standard library imports
 
@@ -22,6 +22,40 @@ class IAgglomeratable(object):
         raise NotImplemented
 
 
+class TreeNodeStat(object):
+    """
+    A data structure representing the basic statistics of a TreeNode
+    instance.
+
+    Attributes:
+        num_char: An integer indicating total number of characters under
+            a TreeNode instance.
+        avg_font_size: A float indicating average font size under a
+            TreeNode instance.
+
+    """
+
+    def __init__(self, num_char=0, avg_font_size=0):
+
+        self.num_char = num_char
+        self.avg_font_size = avg_font_size
+
+    def merge(self, stat):
+        """Merge another TreeNodeStat instance."""
+
+        ret = TreeNodeStat()
+        ret.num_char = self.num_char + stat.num_char
+        if ret.num_char == 0:
+            ret.avg_font_size = 0
+            return ret
+
+        ret.avg_font_size += 1.0 * self.num_char * self.avg_font_size
+        ret.avg_font_size += 1.0 * stat.num_char * stat.avg_font_size
+        ret.avg_font_size /= ret.num_char
+
+        return ret
+
+
 class TreeNode(IAgglomeratable):
     """A node data structure of hierarchy clustering tree.
 
@@ -37,6 +71,7 @@ class TreeNode(IAgglomeratable):
         self.data = data
         self.mbr = mbr
         self.children = []
+        self._stat = None
 
     def agglomerate(self, node, copy_data=False):
         """Merge another TreeNode instance.
@@ -59,6 +94,9 @@ class TreeNode(IAgglomeratable):
     def distance_to(self, node):
         """Measure the distance to another TreeNode instance.
 
+        Including the disntance between minimum bounding rectangels and
+        average font size.
+
         Args:
             node: A TreeNode instance.
 
@@ -67,7 +105,12 @@ class TreeNode(IAgglomeratable):
 
         """
 
-        return self.mbr.distance(node.mbr)
+        rect_dist = self.mbr.distance(node.mbr)
+
+        font_size_dist = self.stat.avg_font_size - node.stat.avg_font_size
+        font_size_dist *= font_size_dist
+
+        return rect_dist + font_size_dist
 
     def isleaf(self):
         """Test if it is a leaf node."""
@@ -89,10 +132,29 @@ class TreeNode(IAgglomeratable):
 
         if self.isleaf():
             yield self
-            return
+        else:
+            for c in self.children:
+                for node in c.dfs():
+                    yield node
 
+    @property
+    def stat(self):
+
+        if self._stat is not None:
+            return self._stat
+
+        if self.isleaf():
+            self._stat = TreeNodeStat()
+            if self.data is not None:
+                self._stat.num_char = len(self.data)
+                self._stat.avg_font_size = self.mbr.h
+            return self._stat
+
+        self._stat = TreeNodeStat()
         for c in self.children:
-            c.dfs()
+            self._stat = self._stat.merge(c.stat)
+
+        return self._stat
 
 
 def create_dendrogram(leaves, max_num_cluster=1, onmerge=None):

@@ -1,4 +1,4 @@
-#!/usr/env/python
+#!/usr/bin/env python
 
 # standard library imports
 from collections import namedtuple
