@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 # standard library imports
+from collections import defaultdict
 
 # third party related imports
 
@@ -32,26 +33,61 @@ class TreeNodeStat(object):
             a TreeNode instance.
         avg_font_size: A float indicating average font size under a
             TreeNode instance.
+        var_font_size: A float indicating variance of font size under a
+            TreeNode instance.
 
     """
 
-    def __init__(self, num_char=0, avg_font_size=0):
+    def __init__(self, num_char=0, font_size=0):
 
-        self.num_char = num_char
-        self.avg_font_size = avg_font_size
+        self.font_size_sample = defaultdict(lambda: 0)
+        self.font_size_sample[font_size] = num_char
+
+    @property
+    def num_char(self):
+        """Number of characters."""
+
+        return sum(self.font_size_sample.values())
+
+    @property
+    def avg_font_size(self):
+        """Average font size."""
+
+        ret = 0
+        num_char = 0
+        for font_size in self.font_size_sample:
+            ret += font_size * self.font_size_sample[font_size]
+            num_char += self.font_size_sample[font_size]
+
+        return 1.0 * ret / num_char if num_char != 0 else 0
+
+    @property
+    def var_font_size(self):
+        """Font size variance."""
+
+        n = self.num_char
+
+        if n <= 1:
+            return 0
+
+        var = 0
+        avg = self.avg_font_size
+        for font_size in self.font_size_sample:
+            d = font_size - avg
+            var += self.font_size_sample[font_size] * d * d
+
+        var /= (n - 1)
+
+        return var ** 0.5
 
     def merge(self, stat):
         """Merge another TreeNodeStat instance."""
 
         ret = TreeNodeStat()
-        ret.num_char = self.num_char + stat.num_char
-        if ret.num_char == 0:
-            ret.avg_font_size = 0
-            return ret
+        ret.font_size_sample = self.font_size_sample.copy()
 
-        ret.avg_font_size += 1.0 * self.num_char * self.avg_font_size
-        ret.avg_font_size += 1.0 * stat.num_char * stat.avg_font_size
-        ret.avg_font_size /= ret.num_char
+        for font_size in stat.font_size_sample:
+            ret.font_size_sample[font_size] += stat.font_size_sample[font_size]
 
         return ret
 
@@ -63,6 +99,7 @@ class TreeNode(IAgglomeratable):
         data: Additional data.
         mbr: A minimum bounding rectangle.
         children: A list of TreeNode instances.
+        stat: A TreeNodeStat instance.
 
     """
 
@@ -139,15 +176,18 @@ class TreeNode(IAgglomeratable):
 
     @property
     def stat(self):
+        """Get TreeNode statistics."""
 
         if self._stat is not None:
             return self._stat
 
         if self.isleaf():
-            self._stat = TreeNodeStat()
-            if self.data is not None:
-                self._stat.num_char = len(self.data)
-                self._stat.avg_font_size = self.mbr.h
+            if isinstance(self.data, basestring):
+                self._stat = TreeNodeStat(num_char=len(self.data),
+                                          font_size=self.mbr.h)
+            else:
+                self._stat = TreeNodeStat()
+
             return self._stat
 
         self._stat = TreeNodeStat()

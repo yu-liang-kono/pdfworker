@@ -75,12 +75,18 @@ class TestTreeNode(object):
         node2 = TreeNode(Rectangle(0, 0, 10, 10), 'def')
         assert(node1.stat.num_char == 3)
         assert(node1.stat.avg_font_size == 2)
+        assert(node1.stat.var_font_size == 0)
         assert(node2.stat.num_char == 3)
         assert(node2.stat.avg_font_size == 10)
+        assert(node2.stat.var_font_size == 0)
 
         node3 = node1.agglomerate(node2)
         assert(node3.stat.num_char == 3 + 3)
         assert(node3.stat.avg_font_size == 1.0 * (2 * 3 + 10 * 3) / (3 + 3))
+        expected_var = 3 * 2 * 2 + 3 * 10 * 10 - 6 * node3.stat.avg_font_size ** 2
+        expected_var /= (6 - 1)
+        expected_var **= 0.5
+        assert(node3.stat.var_font_size - expected_var < 1.0e-6)
 
     def test_create_dendrogram(self):
 
