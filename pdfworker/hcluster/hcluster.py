@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # standard library imports
-from collections import defaultdict
+from collections import Counter
 
 # third party related imports
 
@@ -40,14 +40,15 @@ class TreeNodeStat(object):
 
     def __init__(self, num_char=0, font_size=0):
 
-        self.font_size_sample = defaultdict(lambda: 0)
-        self.font_size_sample[font_size] = num_char
+        # _font_counter {font_size: number of characters}
+        self._font_counter = Counter()
+        self._font_counter[font_size] = num_char
 
     @property
     def num_char(self):
         """Number of characters."""
 
-        return sum(self.font_size_sample.values())
+        return sum(self._font_counter.values())
 
     @property
     def avg_font_size(self):
@@ -55,9 +56,9 @@ class TreeNodeStat(object):
 
         ret = 0
         num_char = 0
-        for font_size in self.font_size_sample:
-            ret += font_size * self.font_size_sample[font_size]
-            num_char += self.font_size_sample[font_size]
+        for font_size in self._font_counter:
+            ret += font_size * self._font_counter[font_size]
+            num_char += self._font_counter[font_size]
 
         return 1.0 * ret / num_char if num_char != 0 else 0
 
@@ -66,28 +67,21 @@ class TreeNodeStat(object):
         """Font size variance."""
 
         n = self.num_char
-
         if n <= 1:
             return 0
 
-        var = 0
         avg = self.avg_font_size
-        for font_size in self.font_size_sample:
-            d = font_size - avg
-            var += self.font_size_sample[font_size] * d * d
-
-        var /= (n - 1)
-
-        return var ** 0.5
+        var = sum(map(lambda (k, v): v * k * k, self._font_counter.iteritems()))
+        return ((var - n * avg * avg) / (n - 1)) ** 0.5
 
     def merge(self, stat):
         """Merge another TreeNodeStat instance."""
 
         ret = TreeNodeStat()
-        ret.font_size_sample = self.font_size_sample.copy()
+        ret._font_counter = self._font_counter.copy()
 
-        for font_size in stat.font_size_sample:
-            ret.font_size_sample[font_size] += stat.font_size_sample[font_size]
+        for font_size in stat._font_counter:
+            ret._font_counter[font_size] += stat._font_counter[font_size]
 
         return ret
 
