@@ -34,35 +34,22 @@ def get_all_pdfs():
     return filter(lambda f: fnmatch.fnmatch(f, '*.pdf'), os.listdir(cwd))
 
 
-def create_intermediate_files(pdf_files):
+def create_intermediate_files():
     """Create directories for intermediate files."""
 
-    dirs = [DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF,
-            DIR_BACK, DIR_TEXT, DIR_FINAL]
-    #files = [FILE_CLIPBOARD]
+    dirs = [DIR_PAGE, DIR_SRGB, DIR_VTI]
     
-    for pdf_file in pdf_files:
-        root, ext = os.path.splitext(pdf_file)
-        dirs.append(os.path.join(DIR_TIFF, root))
-        
     for dir in dirs:
         try:
             os.mkdir(os.path.join(cwd, dir))
         except OSError, e:
             print 'directory (', dir, ') already exists'
 
-    #for file in files:
-    #    try:
-    #        f = open(os.path.join(cwd, file), 'w')
-    #        f.close()
-    #    except OSError, e:
-    #        print 'create file(', file, ') failed'
-
 
 def cleanup_intermediate_files():
     """Clean up directories for intermediate files."""
 
-    for dir in (DIR_PAGE,):
+    for dir in (DIR_PAGE, DIR_SRGB, DIR_VTI):
         shutil.rmtree(os.path.join(cwd, dir))
 
     
@@ -70,21 +57,27 @@ def do_preprocess(pdf_files):
     """Main loop for each pdf file."""
 
     for pdf_file in pdf_files:
+
+        create_intermediate_files()
+                
+        page_dir = os.path.join(cwd, DIR_PAGE)
+        srgb_dir = os.path.join(cwd, DIR_SRGB)
+        vti_dir = os.path.join(cwd, DIR_VTI)
         
         # 1) split a pdf file, a page a pdf
-        page_dir = os.path.join(cwd, DIR_PAGE)
-        num_pages = pdfutil.split(os.path.join(cwd, pdf_file), page_dir)
+        #num_pages = pdfutil.split(os.path.join(cwd, pdf_file), page_dir)
                                   
-        for i in xrange(1, num_pages + 1):
-            page_pdf = os.path.join(page_dir, '%s.pdf' % i)
-            
-        #queue = [pdf_file]
-        #output = []
+        #for i in xrange(1, num_pages + 1):
+        i = 1
+        page_pdf = os.path.join(page_dir, '%s.pdf' % i)
+   
+        pdfutil.convert_srgb(page_pdf, srgb_dir)
+        srgb_pdf = os.path.join(srgb_dir, '%s.pdf' % i)
+        
+        pdfutil.convert_vti(srgb_pdf, vti_dir)
+        vti_pdf = os.path.join(vti_dir, '%s.pdf' % i)
 
-        #while len(queue) > 0:
-        #    file = queue[0]
-        #    queue = queue[1:]
-        #    output.append(file)
+        #cleanup_intermediate_files()
 
 def main():
 
