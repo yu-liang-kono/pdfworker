@@ -37,7 +37,7 @@ def get_all_pdfs():
 def create_intermediate_files():
     """Create directories for intermediate files."""
 
-    dirs = [DIR_PAGE, DIR_SRGB, DIR_VTI]
+    dirs = [DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF]
     
     for dir in dirs:
         try:
@@ -49,7 +49,7 @@ def create_intermediate_files():
 def cleanup_intermediate_files():
     """Clean up directories for intermediate files."""
 
-    for dir in (DIR_PAGE, DIR_SRGB, DIR_VTI):
+    for dir in (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF):
         shutil.rmtree(os.path.join(cwd, dir))
 
     
@@ -63,6 +63,7 @@ def do_preprocess(pdf_files):
         page_dir = os.path.join(cwd, DIR_PAGE)
         srgb_dir = os.path.join(cwd, DIR_SRGB)
         vti_dir = os.path.join(cwd, DIR_VTI)
+        tiff_dir = os.path.join(cwd, DIR_TIFF)
         
         # 1) split a pdf file, a page a pdf
         #num_pages = pdfutil.split(os.path.join(cwd, pdf_file), page_dir)
@@ -71,11 +72,13 @@ def do_preprocess(pdf_files):
         i = 1
         page_pdf = os.path.join(page_dir, '%s.pdf' % i)
    
-        pdfutil.convert_srgb(page_pdf, srgb_dir)
+        #pdfutil.convert_srgb(page_pdf, srgb_dir)
         srgb_pdf = os.path.join(srgb_dir, '%s.pdf' % i)
         
-        pdfutil.convert_vti(srgb_pdf, vti_dir)
+        #pdfutil.convert_vti(srgb_pdf, vti_dir)
         vti_pdf = os.path.join(vti_dir, '%s.pdf' % i)
+
+        pdfutil.convert_tiff(vti_pdf, tiff_dir)
 
         #cleanup_intermediate_files()
 
