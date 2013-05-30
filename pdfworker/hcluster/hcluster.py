@@ -72,7 +72,7 @@ class TreeNodeStat(object):
 
         avg = self.avg_font_size
         var = sum(map(lambda (k, v): v * k * k, self._font_counter.iteritems()))
-        return ((var - n * avg * avg) / (n - 1)) ** 0.5
+        return (max((var - n * avg * avg) / (n - 1), 0)) ** 0.5
 
     def merge(self, stat):
         """Merge another TreeNodeStat instance."""
@@ -155,6 +155,22 @@ class TreeNode(IAgglomeratable):
 
         """
 
+        # deprecate
+        def _cmp(x, y):
+            x_norm = Point(x.mbr.x, x.mbr.y).square_dist()
+            y_norm = Point(y.mbr.x, y.mbr.y).square_dist()
+            if x_norm != y_norm:
+                return int(x_norm - y_norm)
+
+            x_center = Point(x.mbr.x + x.mbr.w / 2, x.mbr.y + x.mbr.h / 2)
+            y_center = Point(y.mbr.x + y.mbr.w / 2, y.mbr.y + y.mbr.h / 2)
+            if x_center.y != y_center.y:
+                return int(x_center.y - y_center.y)
+            if x_center.x != y_center.x:
+                return int(x_center.x - y_center.y)
+
+            return 0
+
         self.children.extend(filter(lambda a: isinstance(a, TreeNode), args))
         self.children.sort(key=lambda c: Point(c.mbr.x, c.mbr.y).square_dist())
 
@@ -189,6 +205,14 @@ class TreeNode(IAgglomeratable):
             self._stat = self._stat.merge(c.stat)
 
         return self._stat
+
+    def clone(self):
+
+        ret = TreeNode(self.mbr, self.data)
+        ret.children = self.children
+        ret._stat = self._stat
+
+        return ret
 
 
 def create_dendrogram(leaves, max_num_cluster=1, onmerge=None):
