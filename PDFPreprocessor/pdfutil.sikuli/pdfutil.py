@@ -248,9 +248,10 @@ def convert_vti(abs_src, abs_output_dir):
     close_pdfs()
 
 
-def convert_tiff(abs_src, abs_output_dir):
+def convert_tiff(abs_src, abs_output_name):
     """Save pdf background as tiff."""
 
+    print abs_src
     open_pdf(abs_src)
 
     click("1369803763681.png")
@@ -300,9 +301,14 @@ def convert_tiff(abs_src, abs_output_dir):
     click("1369807652267.png")
     tempdir = _create_desktop_tempdir_and_save()
     abs_tempdir = os.path.expanduser(os.path.join('~', 'Desktop', tempdir))
-    while len(filter(lambda f: fnmatch(f, '*.tiff'), os.listdir(abs_tempdir))) == 0:
+    while True:
+        tiffs = filter(lambda f: fnmatch(f, '*.tiff'), os.listdir(abs_tempdir))
+        if len(tiffs) > 0:
+            break
         wait(1)
-    _move_tempdir_content_and_destroy(tempdir, abs_output_dir)
+
+    shutil.move(os.path.join(abs_tempdir, tiffs[0]), abs_output_name)
+    shutil.rmtree(abs_tempdir)
 
     type('w', KeyModifier.CMD)
     wait(0.25)
@@ -339,4 +345,75 @@ def _configure_tiff_setting():
         click(Pattern("1369807588124.png").targetOffset(40,0))
         type('a', KeyModifier.CMD)
         paste(u' 600 像素 / 英吋')
+
+
+def merge_tiff_by_imagemagick(abs_src_dir, num_pages, abs_output_dir):
+    """Merge all tiff files to a pdf."""
+
+    cmd = ['convert']
+    for i in xrange(1, num_pages + 1):
+        cmd.append(os.path.join(abs_src_dir, '%s.tiff' % i))
+    cmd.append(os.path.join(abs_output_dir, 'back.pdf'))
+    print cmd
     
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    except OSError, e:
+        print unicode(e)
+        raise PDFUtilError('Error: merge tiff to back.pdf')
+
+    out, err = p.communicate()
+
+
+def merge_tiff(abs_src_dir, abs_output_dir):
+
+    try:
+        subprocess.Popen(['open', '-a', 'Adobe Acrobat Pro'])
+        wait(1)
+    except OSError, e:
+        print unicode(e)
+        raise PDFUtilError('Error: open Adobe Acrobat Pro')
+
+    # move mouse to the top
+    loc = Env.getMouseLocation()
+    loc.setLocation(loc.getX(), 0)
+    mouseMove(loc)
+    click(Pattern("1369805010440.png").targetOffset(55,0))
+    hover("1369824102358.png")
+    click("1369824125882.png")
+    wait("1369824157955.png", 5)
+    click("1369824184003.png")
+    click("1369824203704.png")
+    search_box = wait("1369824244188.png", 5)
+    click(search_box)
+    paste(os.path.basename(abs_src_dir))
+
+    click(Pattern("1369826469948.png").targetOffset(46,13))
+    click("1369826526713.png")
+    click("1369826623378.png")
+    click("1369827319476.png")
+    wait(1)
+    waitVanish("1369828292764.png", FOREVER)
+    wait(1)
+    type('s', KeyModifier.CMD)
+
+    tempdir = uuid.uuid1().hex
+    os.mkdir(tempdir)
+    search_box = wait("1369824244188.png", 5)
+    click(search_box)
+    paste(tempdir)
+    click(Pattern("1369826469948.png").targetOffset(46,13))
+    doubleClick("1369826526713.png")
+    click("1369828946228.png")
+
+    while True:
+        files = filter(lambda f: fnmatch(f, '*.pdf'), os.listdir(tempdir))
+        if len(files) == 0:
+            wait(1)
+            continue
+
+        shutil.move(os.path.join(tempdir, files[0]),
+                    os.path.join(abs_output_dir, 'back.pdf'))
+        break
+       
+    shutil.rmtree(tempdir)
