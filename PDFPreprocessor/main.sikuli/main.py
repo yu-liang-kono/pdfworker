@@ -19,9 +19,9 @@ reload(pdfutil)
 reload(preview)
 
 # intermediate result directories
-DIR_PAGE = os.path.join(cwd, 'page')
-DIR_SRGB = os.path.join(cwd, 'srgb')
-DIR_VTI = os.path.join(cwd, 'vti')
+DIR_PAGE = os.path.join(cwd, 'page_643e7daec8e111e2875300254bc4dbd2')
+DIR_SRGB = os.path.join(cwd, 'srgb_bc85c170c8e311e2b3d400254bc4dbd2')
+DIR_VTI = os.path.join(cwd, 'vti_%s' % uuid.uuid1().hex)
 DIR_TIFF = os.path.expanduser(os.path.join('~', 'Desktop', '5a07f2c0c85211e2949d00254bc4dbd2'))
 DIR_BACK = os.path.join(cwd, 'back')
 DIR_TEXT = os.path.join(cwd, 'text')
@@ -65,19 +65,19 @@ def do_preprocess(pdf_files):
         #num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
         num_pages = 12                          
         for i in xrange(1, num_pages + 1):
-            #i = 1
-            page_pdf = os.path.join(DIR_PAGE, '%s.pdf' % i)
+            file = '%04d.pdf' % i
+            page_pdf = os.path.join(DIR_PAGE, file)
        
             #pdfutil.convert_srgb(page_pdf, DIR_SRGB)
-            srgb_pdf = os.path.join(DIR_SRGB, '%s.pdf' % i)
+            srgb_pdf = os.path.join(DIR_SRGB, file)
             
-            #pdfutil.convert_vti(srgb_pdf, DIR_VTI)
-            vti_pdf = os.path.join(DIR_VTI, '%s.pdf' % i)
-    
+            pdfutil.convert_vti(srgb_pdf, DIR_VTI)
+            vti_pdf = os.path.join(DIR_VTI, file)
+
             #pdfutil.convert_tiff(vti_pdf, os.path.join(DIR_TIFF, '%04d.tiff' % i))
             #return
             
-        pdfutil.merge_tiff(DIR_TIFF, DIR_BACK)
+        #pdfutil.merge_tiff(DIR_TIFF, DIR_BACK)
 
         #cleanup_intermediate_files()
 

@@ -14,11 +14,15 @@ import uuid
 # third party related imports
 
 # local library imports
-
+import savefiledlg
+reload(savefiledlg)
 
 # Control the time taken for mouse movement to a target location.
 DEFAULT_MOUSE_DELAY = Settings.MoveMouseDelay
 Settings.MoveMouseDelay = 0.1
+
+
+ACROBAT_STATUS_BAR = "1369733764191.png"
 
 
 class PDFUtilError(Exception): pass
@@ -48,33 +52,23 @@ class ActionWizard(object):
         self.action_menu = self.ACTION_MENU_PATTERN[action]
         self.action_done_dlg = self.ACTION_DONE_PATTERN[action]
 
-    def do_action(self, timeout=60):
+    def do_action(self, abs_output_dir, timeout=60):
 
         self._hover_action_wizard_menu()
         click(self.action_menu)
-        tempdir = self._save_to_tempdir(timeout)
-        wait("1369800656818.png", timeout)
-        click("1369735590828.png")
-
-        return tempdir
+        savefiledlg.wait_dlg_popup(timeout)
+        savefiledlg.find_target_dir(abs_output_dir)
+        click(savefiledlg.SAVE_BUTTON)
+        wait("1369889558051.png")
+        click("1369889574993.png")
         
     def _hover_action_wizard_menu(self):
-
-        # move mouse to the top
-        loc = Env.getMouseLocation()
-        loc.setLocation(loc.getX(), 0)
-        mouseMove(loc)
         
+        _move_mouse_top()
         click(Pattern("1369733764191.png").targetOffset(80,0))
-        action_wizard = find("1369733870845.png")
-        hover(action_wizard.getCenter())
+        hover("1369889288003.png")
 
-    def _save_to_tempdir(self, timeout=60):
-
-        wait("1369799431328.png", timeout)
-        return _create_desktop_tempdir_and_save()
-
-
+        
 def _create_desktop_tempdir_and_save():
 
     left_side_bar_header = find("1369734265216.png")
@@ -98,6 +92,35 @@ def _create_desktop_tempdir_and_save():
     return tempdir
 
 
+def _get_highlight_text():
+    """Given the texts are highlighted, copy to clipboard and return."""
+
+    type('a', KeyModifier.CMD)
+    type('c', KeyModifier.CMD)
+
+    cwd = os.path.dirname(getBundlePath())
+    script_path = os.path.join(cwd, 'clipboard.scpt')
+    
+    try:
+        p = subprocess.Popen(["osascript", script_path],
+                             stdout=subprocess.PIPE)
+    except OSError, e:
+        print unicode(e)
+        return None
+
+    out, err = p.communicate()
+    
+    return out
+
+
+def _move_mouse_top():
+    """Move mouse to the top status bar."""
+
+    loc = Env.getMouseLocation()
+    loc.setLocation(loc.getX(), 0)
+    mouseMove(loc)
+    
+    
 def get_num_pages(abs_filename):
     """Get the number of pages in a pdf."""
 
@@ -160,56 +183,37 @@ def split(abs_filename, abs_output_dir):
     
     # start extract pages  
     click("1369711747763.png")
-    extract_dlg = "1369713588056.png"
-    wait(extract_dlg, TIMEOUT)
-
-    # set split range
-    click(Pattern("1369797890666.png").targetOffset(28,-18))
-    type('a', KeyModifier.CMD)
-    type('c', KeyModifier.CMD)
-    num_pages = int(_extract_clipboard())
-    print 'number of pages:', num_pages 
+    extract_dlg = wait("1369797890666.png", TIMEOUT)
+    click(extract_dlg.getTarget().offset(28, -18))
+    num_pages = int(_get_highlight_text()) 
     type('1')
-    click(Pattern("1369721399716.png").targetOffset(-60,0))
+    click(extract_dlg.getTarget().offset(-7, 29))
     click("1369723377211.png")
 
     # save to a directory in desktop directory
-    wait("1369723448277.png", TIMEOUT)
-    tempdir = _create_desktop_tempdir_and_save()
+    savefiledlg.wait_dlg_popup(TIMEOUT)
+    savefiledlg.find_target_dir(abs_output_dir)
+    click(savefiledlg.SELECT_BUTTON)
 
     # wait until all pdf are dumped
     basename = os.path.basename(abs_filename)
     base, ext = os.path.splitext(basename)
-    tempdir = os.path.expanduser(os.path.join('~', 'Desktop', tempdir))
-    last_page_pdf = os.path.join(tempdir, '%s %s.pdf' % (base, num_pages))
+    last_page_pdf = os.path.join(abs_output_dir,
+                                 '%s %s.pdf' % (base, num_pages))
     while not os.path.exists(last_page_pdf):
-        wait(1)
+        wait(5)
 
-    # move pdf files to output directory
-    for i in xrange(1, num_pages + 1):
-        shutil.move(os.path.join(tempdir, '%s %s.pdf' % (base, i)),
-                    os.path.join(abs_output_dir, '%s.pdf' % i))
-    shutil.rmtree(tempdir)
-
+    # rename all dumped pdf
+    for file in os.listdir(abs_output_dir):
+        if fnmatch(file, '*.pdf'):
+            base, ext = os.path.splitext(file)
+            page = int(base.split(' ')[-1])
+            shutil.move(os.path.join(abs_output_dir, file),
+                        os.path.join(abs_output_dir, '%04d.pdf' % page))
+            
     close_pdfs()
     
     return num_pages
-
-
-def _extract_clipboard():
-
-    cwd = os.path.dirname(getBundlePath())
-    script_path = os.path.join(cwd, 'clipboard.scpt')
-    
-    try:
-        p = subprocess.Popen(["osascript", script_path], stdout=subprocess.PIPE)
-    except OSError, e:
-        print unicode(e)
-        return None
-
-    out, err = p.communicate()
-    
-    return out
 
 
 def convert_srgb(abs_src, abs_output_dir):
@@ -218,8 +222,7 @@ def convert_srgb(abs_src, abs_output_dir):
     open_pdf(abs_src)
 
     action = ActionWizard(ActionWizard.CONVERT_SRGB)
-    tempdir = action.do_action()
-    _move_tempdir_content_and_destroy(tempdir, abs_output_dir)
+    action.do_action(abs_output_dir)
 
     close_pdfs()
     
@@ -240,10 +243,8 @@ def convert_vti(abs_src, abs_output_dir):
 
     open_pdf(abs_src)
 
-    # move mouse to the top
     action = ActionWizard(ActionWizard.CONVERT_VTI)
-    tempdir = action.do_action()
-    _move_tempdir_content_and_destroy(tempdir, abs_output_dir)
+    action.do_action(abs_output_dir)
     
     close_pdfs()
 
@@ -366,7 +367,8 @@ def merge_tiff_by_imagemagick(abs_src_dir, num_pages, abs_output_dir):
 
 
 def merge_tiff(abs_src_dir, abs_output_dir):
-
+    """Merge all tiff files to a pdf."""
+    
     try:
         subprocess.Popen(['open', '-a', 'Adobe Acrobat Pro'])
         wait(1)
@@ -417,3 +419,9 @@ def merge_tiff(abs_src_dir, abs_output_dir):
         break
        
     shutil.rmtree(tempdir)
+
+
+def convert_text(abs_src, abs_output_dir):
+    """Merge to a pdf only containing texts."""
+
+    
