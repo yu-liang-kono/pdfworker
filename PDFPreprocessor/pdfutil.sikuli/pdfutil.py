@@ -155,6 +155,9 @@ def open_pdf(abs_filename, timeout=10):
         print unicode(e)
         raise PDFUtilError('Error: open -a "Adobe Acrobat Pro" %s' % abs_filename) 
     except FindFailed, e:
+        out, err = p.communicate()
+        print out
+        print err
         print unicode(e)
         raise PDFUtilError('Error: open %s timeout' % abs_filename)
 
@@ -167,7 +170,6 @@ def close_pdfs():
         type('w', KeyModifier.CMD)
         wait(1)
         
-
     app.close()
 
     
@@ -414,7 +416,7 @@ def merge_tiff_by_imagemagick(abs_src_dir, num_pages, abs_output_dir):
     out, err = p.communicate()
 
 
-def merge_tiff(abs_src_dir, abs_output_dir):
+def merge_to_single_pdf(abs_src_dir, abs_output_dir, output_name):
     """Merge all tiff files to a pdf."""
     
     try:
@@ -449,7 +451,7 @@ def merge_tiff(abs_src_dir, abs_output_dir):
     type('s', KeyModifier.CMD)
     savefiledlg.wait_dlg_popup(5)
     savefiledlg.find_target_dir(abs_output_dir)
-    paste('back')
+    paste(output_name)
     type(Key.ENTER)
 
     close_pdfs()
@@ -459,7 +461,6 @@ def convert_text(abs_src, abs_output_dir):
     """Merge to a pdf only containing texts."""
 
     open_pdf(abs_src)
-    print abs_src
 
     try:
         layer_btn = find("1369968652342.png")
@@ -512,4 +513,82 @@ def convert_text(abs_src, abs_output_dir):
     savefiledlg.find_target_dir(abs_output_dir)
     type(Key.ENTER)
     
+    close_pdfs()
+
+
+def export_by_preview(abs_src):
+    """Export to pdf by Mac OS X Preview application."""
+
+    try:
+        subprocess.Popen(['open', '-a', 'Preview', abs_src])
+    except OSError, e:
+        raise PDFUtilError('cannot open -a Preview %s' % abs_src)
+
+    _move_mouse_top()
+    preview_pattern = find("1369988792216.png")
+    file_pattern = preview_pattern.nearby(150).find("1369971661059.png")
+    click(file_pattern)
+    export_label = file_pattern.nearby(250).find("1369988906981.png")
+    click(export_label)
+    click("1369989934724.png")
+
+    try:
+        alert_dlg = find("1369989046644.png")
+        click(alert_dlg.nearby(50).right().find("1369989268815.png"))
+    except FindFailed, e:
+        pass
+
+    app = App('Preview')
+    while app.window():
+        type('w', KeyModifier.CMD)
+        wait(1)
+        
+    app.close()
+
+
+def merge_text_and_back(abs_text_pdf, abs_back_pdf, abs_output_pdf):
+    """Merge text pdf and background pdf altogether"""
+
+    try:
+        p = subprocess.Popen(['pdftk', abs_text_pdf, 'multibackground',
+                              abs_back_pdf, 'output', abs_output_pdf],
+                             stdout=subprocess.PIPE)
+    except OSError, e:
+        print 'Error: pdftk %s multibackground %s output %s' % \
+              (abs_text_pdf, abs_back_pdf, abs_output_pdf)
+        print unicode(e)
+
+    while not os.path.exists(abs_output_pdf):
+        wait(1)
+
+
+def optimize(abs_src, output_name):
+    """Perform optimization action by Adobe Acrobat Pro application."""
+
+    open_pdf(abs_src)
+
+    _move_mouse_top()
+    acrobat_pattern = find(ACROBAT_STATUS_BAR)
+    file_pattern = acrobat_pattern.nearby(150).find("1369971661059.png")
+    click(file_pattern)
+    save_as_pattern = file_pattern.nearby(150).find("1369971712516.png")
+    hover(save_as_pattern)
+    click(save_as_pattern.nearby(400).find("1369991360158.png"))
+
+    optimize_dlg = wait("1369991489523.png", FOREVER)
+    try:
+        optimize_dlg.nearby(50).left(400).find("1369991583178.png")
+    except FindFailed, e:
+        setting_label = optimize_dlg.nearby(400).find(Pattern("1369992118650.png").targetOffset(35,0))
+        click(setting_label)
+        click(setting_label.nearby(150).find("1369992220358.png"))
+
+    type(Key.ENTER)
+    paste(output_name)
+    type(Key.ENTER)
+
+    output_file = os.path.join(os.path.dirname(abs_src), output_name + '.pdf')
+    while not os.path.exists(output_file):
+        wait(1)
+
     close_pdfs()

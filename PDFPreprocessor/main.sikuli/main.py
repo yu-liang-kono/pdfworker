@@ -14,9 +14,7 @@ if cwd not in sys.path:
 
 # local library imports
 import pdfutil
-import preview
 reload(pdfutil)
-reload(preview)
 
 # intermediate result directories
 DIR_PAGE = os.path.join(cwd, 'page_643e7daec8e111e2875300254bc4dbd2')
@@ -59,8 +57,10 @@ def do_preprocess(pdf_files):
 
     for pdf_file in pdf_files:
 
+        base, ext = os.path.splitext(pdf_file)
+        
         create_intermediate_files()
-                     
+        
         # 1) split a pdf file, a page a pdf
         #num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
         num_pages = 12                          
@@ -76,11 +76,25 @@ def do_preprocess(pdf_files):
 
             #pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
 
-            pdfutil.convert_text(vti_pdf, DIR_TEXT)
-            return
+            #pdfutil.convert_text(vti_pdf, DIR_TEXT)
+            #return
                          
-        #pdfutil.merge_tiff(DIR_TIFF, DIR_BACK)
+        #pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')
+        output_text_pdf = '%s_text' % base
+        #pdfutil.merge_to_single_pdf(DIR_TEXT, DIR_TEXT, output_text_pdf)
+        output_background_pdf = os.path.join(DIR_BACK, 'back.pdf')
+        output_text_pdf = os.path.join(DIR_TEXT, output_text_pdf + '.pdf')
+        #pdfutil.export_by_preview(output_text_pdf)
+        merged_pdf = os.path.join(cwd, '%s_merge.pdf' % base)
+        pdfutil.merge_text_and_back(output_text_pdf, output_background_pdf,
+                                    merged_pdf)
+        while not os.path.exists(merged_pdf):
+            wait(1)
 
+        final_pdf = '%s_final' % base
+        pdfutil.optimize(merged_pdf, final_pdf)
+        os.unlink(merged_pdf)        
+    
         #cleanup_intermediate_files()
 
 def main():
