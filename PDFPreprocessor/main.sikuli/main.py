@@ -63,12 +63,13 @@ def do_preprocess(pdf_files):
         
         # 1) split a pdf file, a page a pdf
         #num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
-        num_pages = 12                          
+        num_pages = 12
         for i in xrange(1, num_pages + 1):
             file = '%04d.pdf' % i
             page_pdf = os.path.join(DIR_PAGE, file)
        
-            #pdfutil.convert_srgb(page_pdf, DIR_SRGB)
+            pdfutil.convert_srgb(page_pdf, DIR_SRGB)
+            
             srgb_pdf = os.path.join(DIR_SRGB, file)
             
             #pdfutil.convert_vti(srgb_pdf, DIR_VTI)
@@ -78,7 +79,7 @@ def do_preprocess(pdf_files):
 
             #pdfutil.convert_text(vti_pdf, DIR_TEXT)
             #return
-                         
+        return         
         #pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')
         output_text_pdf = '%s_text' % base
         #pdfutil.merge_to_single_pdf(DIR_TEXT, DIR_TEXT, output_text_pdf)
@@ -88,8 +89,6 @@ def do_preprocess(pdf_files):
         merged_pdf = os.path.join(cwd, '%s_merge.pdf' % base)
         pdfutil.merge_text_and_back(output_text_pdf, output_background_pdf,
                                     merged_pdf)
-        while not os.path.exists(merged_pdf):
-            wait(1)
 
         final_pdf = '%s_final' % base
         pdfutil.optimize(merged_pdf, final_pdf)

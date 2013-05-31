@@ -23,6 +23,8 @@ Settings.MoveMouseDelay = 0.1
 
 
 ACROBAT_STATUS_BAR = "1369733764191.png"
+FILE_STATUS_BAR = "1369971661059.png"
+VIEW_STATUS_BAR = "1369971004152.png"
 
 
 class PDFUtilError(Exception): pass
@@ -41,32 +43,35 @@ class ActionWizard(object):
         CONVERT_SRGB: "1369734036721.png",
         CONVERT_VTI: "1369736894650.png",
     }
-    ACTION_DONE_PATTERN = {
-        CONVERT_SRGB: "1369735513576.png",
-        CONVERT_VTI: "1369737125198.png",
-    }
     
     def __init__(self, action):
         """Constructor. Must be a valid action name."""
         
         self.action_menu = self.ACTION_MENU_PATTERN[action]
-        self.action_done_dlg = self.ACTION_DONE_PATTERN[action]
 
     def do_action(self, abs_output_dir, timeout=60):
 
-        self._hover_action_wizard_menu()
-        click(self.action_menu)
+        action_wizard_pattern = self._hover_action_wizard_menu()
+        click(action_wizard_pattern.nearby(100).right(250).find(self.action_menu))
+        
         savefiledlg.wait_dlg_popup(timeout)
         savefiledlg.find_target_dir(abs_output_dir)
-        click(savefiledlg.SAVE_BUTTON)
+        type(Key.ENTER)
+
         wait("1369889558051.png")
-        click("1369889574993.png")
+        type(Key.ENTER)
         
     def _hover_action_wizard_menu(self):
         
         _move_mouse_top()
-        click(Pattern("1369733764191.png").targetOffset(80,0))
-        hover("1369889288003.png")
+        
+        acrobat_pattern = find(ACROBAT_STATUS_BAR)
+        file_pattern = acrobat_pattern.nearby(50).find(FILE_STATUS_BAR)
+        click(file_pattern)
+        action_wizard_pattern = file_pattern.nearby(50).below(300).find("1369993150771.png")
+        hover(action_wizard_pattern)
+
+        return action_wizard_pattern
 
         
 def _create_desktop_tempdir_and_save():
@@ -119,8 +124,15 @@ def _move_mouse_top():
     loc = Env.getMouseLocation()
     loc.setLocation(loc.getX(), 0)
     mouseMove(loc)
-    
-    
+
+
+def _wait_until_exist(abs_file, wait_second=1):
+    """Wait until a file exists."""
+
+    while not os.path.exists(abs_file):
+        wait(wait_second)
+
+        
 def get_num_pages(abs_filename):
     """Get the number of pages in a pdf."""
 
@@ -170,7 +182,7 @@ def close_pdfs():
         type('w', KeyModifier.CMD)
         wait(1)
         
-    app.close()
+    #app.close()
 
     
 def split(abs_filename, abs_output_dir):
@@ -181,29 +193,29 @@ def split(abs_filename, abs_output_dir):
     open_pdf(abs_filename)
 
     # jump to the end of pages
-    click("1369712063644.png")
+    end_btn = find("1369712063644.png")
+    click(end_btn)
     
-    # start extract pages  
-    click("1369711747763.png")
-    extract_dlg = wait("1369797890666.png", TIMEOUT)
-    click(extract_dlg.getTarget().offset(28, -18))
+    # start extract pages
+    click(end_btn.nearby(50).right().find("1369711747763.png"))
+    extract_dlg = wait("1369993526505.png", TIMEOUT)
+    click(extract_dlg.getTarget().offset(25, -35))
     num_pages = int(_get_highlight_text()) 
-    type('1')
-    click(extract_dlg.getTarget().offset(-7, 29))
-    click("1369723377211.png")
+    paste('1')
+    click(extract_dlg.getTarget().offset(-8, 12))
+    type(Key.ENTER)
 
     # save to a directory in desktop directory
     savefiledlg.wait_dlg_popup(TIMEOUT)
     savefiledlg.find_target_dir(abs_output_dir)
-    click(savefiledlg.SELECT_BUTTON)
+    type(Key.ENTER)
 
     # wait until all pdf are dumped
     basename = os.path.basename(abs_filename)
     base, ext = os.path.splitext(basename)
     last_page_pdf = os.path.join(abs_output_dir,
                                  '%s %s.pdf' % (base, num_pages))
-    while not os.path.exists(last_page_pdf):
-        wait(5)
+    _wait_until_exist(last_page_pdf, wait_second=5)
 
     # rename all dumped pdf
     for file in os.listdir(abs_output_dir):
