@@ -28,6 +28,7 @@ def find_target_dir(dirname):
     type('g', KeyModifier.CMD + KeyModifier.SHIFT)
     path_dlg = wait(GOTO_PATH_LABEL)
     click(path_dlg.getTarget().offset(0, 20))
+    type('a', KeyModifier.CMD)
     paste(dirname)
     type(Key.ENTER)
-
+    waitVanish(GOTO_PATH_LABEL)

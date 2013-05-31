@@ -249,104 +249,159 @@ def convert_vti(abs_src, abs_output_dir):
     close_pdfs()
 
 
-def convert_tiff(abs_src, abs_output_name):
+def convert_tiff(abs_src, abs_output_dir):
     """Save pdf background as tiff."""
 
-    print abs_src
     open_pdf(abs_src)
 
-    click("1369803763681.png")
-    click(Pattern("1369804118196.png").targetOffset(-25,0))
+    try:
+        layer_btn = find("1369968652342.png")
+        click(layer_btn)
+    except FindFailed, e:
+        print unicode(e)
+        raise PDFUtilError('cannot find out layer button in left column.')
+
+    try:
+        text_layer_label = layer_btn.nearby(300).find("1369968826594.png")
+        click(text_layer_label.getTarget().offset(-25, 0))
+    except FindFailed, e:
+        print unicode(e)
+        print 'Maybe this page does not have text layer.'
+        raise PDFUtilError('cannot find out text layer label in left column')
 
     # move mouse to the top
-    loc = Env.getMouseLocation()
-    loc.setLocation(loc.getX(), 0)
-    mouseMove(loc)
+    _move_mouse_top()
+    acrobat_pattern = find(ACROBAT_STATUS_BAR)
+    view_pattern = acrobat_pattern.nearby(200).find("1369971004152.png")
+    click(view_pattern)
+    tool_pattern = view_pattern.nearby(150).find("1369804301256.png")
+    hover(tool_pattern)
+    protection_pattern = tool_pattern.nearby(150).find("1369804425199.png")
+    click(protection_pattern)
 
-    click(Pattern("1369804255719.png").targetOffset(100,0))
-    hover("1369804301256.png")
-    click("1369804425199.png")
-    wait("1369804512050.png", 5)
-    click("1369804512050.png")
-    wait("1369804581481.png", 60)
+    # remove hidden information
+    target_action = wait("1369804512050.png", 5)
+    click(target_action)
+    complete_pattern = wait("1369804581481.png", 60)
     wait(1) # wait for all checkboxes appear
 
     # first uncheck all checkboxes
-    map(lambda x: click(x), findAll("1369808493670.png"))
+    map(lambda x: click(x), complete_pattern.below().findAll("1369808493670.png"))
            
-    #check what we want
-    if exists("1369804767828.png"):
-        click(Pattern("1369804767828.png").targetOffset(-30,0))
+    # check what we want
+    try:
+        hidden_text_label = complete_pattern.below().find("1369804767828.png")
+        click(hidden_text_label.getTarget().offset(-30, 0))
 
-    if exists("1369804828198.png"):
-        click(Pattern("1369804828198.png").targetOffset(-30,0))
-        
-    click("1369804889386.png")
+        hidden_layer_label = hidden_text_label.nearby(150).find("1369804828198.png")
+        click(hidden_layer_label.getTarget().offset(-30, 0))
+
+        remove_btn = complete_pattern.below(150).find("1369804889386.png")
+        click(remove_btn)
+    except FindFailed, e:
+        print unicode(e)
+        raise PDFUtilError('cannot find out hidden text label')
+    
     wait("1369804930217.png", 60)
     wait(1)
 
     # save as tiff
-    # move mouse to the top
-    loc = Env.getMouseLocation()
-    loc.setLocation(loc.getX(), 0)
-    mouseMove(loc)
-    click(Pattern("1369805010440.png").targetOffset(55,0))
-    hover("1369805055142.png")
-    hover("1369805075632.png")
-    click("1369805137319.png")
-    wait("1369805219651.png", 5)
-    click(Pattern("1369805219651.png").targetOffset(130,0))
-    wait("1369805421147.png", 5)
+    _move_mouse_top()
+    file_pattern = acrobat_pattern.nearby(150).find("1369971661059.png")
+    click(file_pattern)
+    save_as_pattern = file_pattern.nearby(150).find("1369971712516.png")
+    hover(save_as_pattern)
+    image_pattern = save_as_pattern.nearby(400).find("1369971777792.png")
+    hover(image_pattern)
+    tiff_pattern = image_pattern.nearby(100).find("1369971820441.png")
+    click(tiff_pattern)
 
+    # deal with save file dialog
+    savefiledlg.wait_dlg_popup(5)
+    tiff_config_region = find("1369805219651.png")
+    click(tiff_config_region.getTarget().offset(130, 0))
     _configure_tiff_setting()
-    click("1369807652267.png")
-    tempdir = _create_desktop_tempdir_and_save()
-    abs_tempdir = os.path.expanduser(os.path.join('~', 'Desktop', tempdir))
-    while True:
-        tiffs = filter(lambda f: fnmatch(f, '*.tiff'), os.listdir(abs_tempdir))
-        if len(tiffs) > 0:
-            break
+    savefiledlg.find_target_dir(abs_output_dir)
+    click(tiff_config_region.nearby(125).find(savefiledlg.SAVE_BUTTON))
+
+    # wait until tiff saved
+    basename = os.path.basename(abs_src)
+    base, ext = os.path.splitext(basename)
+    output_tiff = os.path.join(abs_output_dir, '%s.tiff' % base)
+    while not os.path.exists(output_tiff):
         wait(1)
 
-    shutil.move(os.path.join(abs_tempdir, tiffs[0]), abs_output_name)
-    shutil.rmtree(abs_tempdir)
-
+    # quit
     type('w', KeyModifier.CMD)
     wait(0.25)
-    if exists("1369815983577.png"):
-        click(Pattern("1369815983577.png").targetOffset(-110,25))
+    try:
+        quit_dlg = find(Pattern("1369815983577.png").targetOffset(-110,25))
+        click(quit_dlg)
+    except FindFailed:
+        raise PDFUtilExit('cannot find confirm dialog')
         
     close_pdfs()
 
 
 def _configure_tiff_setting():
+
+    default_similarity = Settings.MinSimilarity
+    Settings.MinSimilarity = 0.8
+    tiff_config_dlg = wait("1369975556696.png", 5)
+    tiff_config_region = tiff_config_dlg.below(400)
     
-    # configure tiff settings
-    if not exists("1369805438935.png") or \
-       not exists("1369805554434.png") or \
-       not exists("1369805636396.png") or \
-       not exists("1369805847221.png") or \
-       not exists("1369806047586.png") or \
-       not exists("1369807167193.png"):
-        click("1369807204426.png")
-        click(Pattern("1369814699054.png").targetOffset(40,0))
-        click("1369807298142.png")
-        wait(0.25)
-        click(Pattern("1369814255357.png").targetOffset(40,0))
-        click("1369807366371.png")
-        wait(0.25)
-        click(Pattern("1369814646106.png").targetOffset(40,0))
-        click("1369807366371.png")
+    f = capture(tiff_config_region.getX(), tiff_config_region.getY(),
+                tiff_config_region.getW(), tiff_config_region.getH())
+    shutil.move(f, '/Users/yuliang/Desktop/tiff.png')
 
-    if not exists("1369807501996.png"):
-        click(Pattern("1369807517929.png").targetOffset(40,0))
-        click("1369807541423.png")
+    try:
+        tiff_config_region.find("1369805438935.png")
+        tiff_config_region.find("1369805554434.png")
+        tiff_config_region.find("1369805636396.png")
+        tiff_config_region.find("1369805847221.png")
+        tiff_config_region.find("1369806047586.png")
+        tiff_config_region.find("1369807167193.png")
+    except FindFailed, e:
+        print unicode(e)
+        
+        default_btn = tiff_config_region.find("1369807204426.png")
+        click(default_btn)
+        monochrome_opt = tiff_config_region.find("1369814699054.png")
+        click(monochrome_opt.getTarget().offset(40, 0))
+        click(monochrome_opt.nearby(100).find("1369807298142.png"))
+        wait(0.25)
 
-    if not exists("1369807568436.png"):
-        click(Pattern("1369807588124.png").targetOffset(40,0))
+        grayscale_opt = monochrome_opt.nearby(150).find("1369814255357.png")
+        click(grayscale_opt.getTarget().offset(40, 0))
+        click(grayscale_opt.nearby(150).find("1369807366371.png"))
+        wait(0.25)
+
+        color_opt = grayscale_opt.nearby(150).find("1369814646106.png")
+        click(color_opt.getTarget().offset(40, 0))
+        click(color_opt.nearby(150).find("1369807366371.png"))
+    finally:
+        if 'default_btn' not in locals():
+            default_btn = tiff_config_region.find("1369807204426.png")
+        
+    bottom_region = default_btn.nearby(100)
+    f = capture(bottom_region.getX(), bottom_region.getY(),
+                bottom_region.getW(), bottom_region.getH())
+    shutil.copy(f, '/Users/yuliang/Desktop/bottom.png')
+    
+    if not bottom_region.exists("1369807501996.png"):
+        color_space_opt = bottom_region.find("1369807517929.png")
+        click(color_space_opt.getTarget().offset(40, 0))
+        click(color_space_opt.nearby(150).find("1369807541423.png"))
+
+    if not bottom_region.exists("1369807568436.png"):
+        click(bottom_region.find(Pattern("1369807588124.png").targetOffset(40,0)))
         type('a', KeyModifier.CMD)
         paste(u' 600 像素 / 英吋')
 
+    click(default_btn.right(200).find("1369807652267.png"))
+
+    Settings.MinSimilarity = default_similarity
+    
 
 def merge_tiff_by_imagemagick(abs_src_dir, num_pages, abs_output_dir):
     """Merge all tiff files to a pdf."""
