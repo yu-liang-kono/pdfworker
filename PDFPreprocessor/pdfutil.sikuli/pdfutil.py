@@ -350,10 +350,6 @@ def _configure_tiff_setting():
     tiff_config_dlg = wait("1369975556696.png", 5)
     tiff_config_region = tiff_config_dlg.below(400)
     
-    f = capture(tiff_config_region.getX(), tiff_config_region.getY(),
-                tiff_config_region.getW(), tiff_config_region.getH())
-    shutil.move(f, '/Users/yuliang/Desktop/tiff.png')
-
     try:
         tiff_config_region.find("1369805438935.png")
         tiff_config_region.find("1369805554434.png")
@@ -384,9 +380,6 @@ def _configure_tiff_setting():
             default_btn = tiff_config_region.find("1369807204426.png")
         
     bottom_region = default_btn.nearby(100)
-    f = capture(bottom_region.getX(), bottom_region.getY(),
-                bottom_region.getW(), bottom_region.getH())
-    shutil.copy(f, '/Users/yuliang/Desktop/bottom.png')
     
     if not bottom_region.exists("1369807501996.png"):
         color_space_opt = bottom_region.find("1369807517929.png")
@@ -431,49 +424,35 @@ def merge_tiff(abs_src_dir, abs_output_dir):
         print unicode(e)
         raise PDFUtilError('Error: open Adobe Acrobat Pro')
 
-    # move mouse to the top
-    loc = Env.getMouseLocation()
-    loc.setLocation(loc.getX(), 0)
-    mouseMove(loc)
-    click(Pattern("1369805010440.png").targetOffset(55,0))
-    hover("1369824102358.png")
-    click("1369824125882.png")
-    wait("1369824157955.png", 5)
-    click("1369824184003.png")
-    click("1369824203704.png")
-    search_box = wait("1369824244188.png", 5)
-    click(search_box)
-    paste(os.path.basename(abs_src_dir))
+    # open merge dialog
+    _move_mouse_top()
+    acrobat_pattern = find(ACROBAT_STATUS_BAR)
+    file_pattern = acrobat_pattern.nearby(150).find("1369971661059.png")
+    click(file_pattern)
+    create_pattern = file_pattern.nearby(100).find("1369982849617.png")
+    hover(create_pattern)
+    click(create_pattern.nearby(400).find("1369824125882.png"))
 
-    click(Pattern("1369826469948.png").targetOffset(46,13))
-    click("1369826526713.png")
-    click("1369826623378.png")
+    # start to merge
+    new_file_pattern = wait("1369824184003.png", 5)
+    click(new_file_pattern)
+    click(new_file_pattern.nearby(50).find("1369824203704.png"))
+    savefiledlg.wait_dlg_popup(5)
+    savefiledlg.find_target_dir(abs_src_dir)
+    type(Key.ENTER)
     click("1369827319476.png")
     wait(1)
     waitVanish("1369828292764.png", FOREVER)
     wait(1)
+
+    # save file
     type('s', KeyModifier.CMD)
+    savefiledlg.wait_dlg_popup(5)
+    savefiledlg.find_target_dir(abs_output_dir)
+    paste('back')
+    type(Key.ENTER)
 
-    tempdir = uuid.uuid1().hex
-    os.mkdir(tempdir)
-    search_box = wait("1369824244188.png", 5)
-    click(search_box)
-    paste(tempdir)
-    click(Pattern("1369826469948.png").targetOffset(46,13))
-    doubleClick("1369826526713.png")
-    click("1369828946228.png")
-
-    while True:
-        files = filter(lambda f: fnmatch(f, '*.pdf'), os.listdir(tempdir))
-        if len(files) == 0:
-            wait(1)
-            continue
-
-        shutil.move(os.path.join(tempdir, files[0]),
-                    os.path.join(abs_output_dir, 'back.pdf'))
-        break
-       
-    shutil.rmtree(tempdir)
+    close_pdfs()
 
 
 def convert_text(abs_src, abs_output_dir):
