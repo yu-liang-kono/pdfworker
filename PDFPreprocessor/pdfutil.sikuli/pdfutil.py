@@ -40,8 +40,8 @@ class ActionWizard(object):
     CONVERT_SRGB = 'srgb'
     CONVERT_VTI = 'vti'
     ACTION_MENU_PATTERN = {
-        CONVERT_SRGB: "1369734036721.png",
-        CONVERT_VTI: "1369736894650.png",
+        CONVERT_SRGB: "1369997801592.png",
+        CONVERT_VTI: "1369997817657.png",
     }
     
     def __init__(self, action):
@@ -60,7 +60,7 @@ class ActionWizard(object):
 
         wait("1369889558051.png")
         type(Key.ENTER)
-        
+
     def _hover_action_wizard_menu(self):
         
         _move_mouse_top()
@@ -73,7 +73,20 @@ class ActionWizard(object):
 
         return action_wizard_pattern
 
+    def _choose_action(self, action_wizard_pattern):
+
+        search_region = action_wizard_pattern.below(250).right(400)
+        _debug_region(search_region, 'xd')
+        action_wizard_pattern.nearby(100).right(250).find(self.action_menu)
+
         
+
+def _debug_region(region, output_file):
+
+    f = capture(region.getX(), region.getY(), region.getW(), region.getH())
+    shutil.move(f, os.path.expanduser(os.path.join('~', 'Desktop', output_file + '.png')))
+    
+                    
 def _create_desktop_tempdir_and_save():
 
     left_side_bar_header = find("1369734265216.png")
