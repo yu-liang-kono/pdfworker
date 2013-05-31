@@ -31,4 +31,4 @@ def find_target_dir(dirname):
     type('a', KeyModifier.CMD)
     paste(dirname)
     type(Key.ENTER)
-    waitVanish(GOTO_PATH_LABEL)
+    waitVanish(GOTO_PATH_LABEL, 1)

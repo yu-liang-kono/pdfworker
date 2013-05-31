@@ -458,4 +458,58 @@ def merge_tiff(abs_src_dir, abs_output_dir):
 def convert_text(abs_src, abs_output_dir):
     """Merge to a pdf only containing texts."""
 
+    open_pdf(abs_src)
+    print abs_src
+
+    try:
+        layer_btn = find("1369968652342.png")
+        click(layer_btn)
+    except FindFailed, e:
+        print unicode(e)
+        raise PDFUtilError('cannot find out layer button in left column.')
+
+    layer_btn_region = layer_btn.nearby(200)
+    for x in layer_btn_region.findAll("1369984163231.png"):
+        click(x)
+
+    try:
+        click(Pattern("1369984261725.png").targetOffset(-25,0))
+    except FindFailed, e:
+        print unicode(e)
+
+    _move_mouse_top()
+    acrobat_pattern = find(ACROBAT_STATUS_BAR)
+    view_pattern = acrobat_pattern.nearby(200).find("1369971004152.png")
+    click(view_pattern)
+    tool_pattern = view_pattern.nearby(150).find("1369804301256.png")
+    hover(tool_pattern)
+    protection_pattern = tool_pattern.nearby(150).find("1369804425199.png")
+    click(protection_pattern)
     
+    target_action = wait("1369804512050.png", 5)
+    click(target_action)
+    complete_pattern = wait("1369804581481.png", 60)
+    wait(1) # wait for all checkboxes appear
+
+    # first uncheck all checkboxes
+    map(lambda x: click(x), complete_pattern.below().findAll("1369808493670.png"))
+           
+    # check what we want
+    try:
+        hidden_layer_label = complete_pattern.below().find("1369804828198.png")
+        click(hidden_layer_label.getTarget().offset(-30, 0))
+
+        remove_btn = complete_pattern.below(150).find("1369804889386.png")
+        click(remove_btn)
+    except FindFailed, e:
+        print unicode(e)
+    
+    wait("1369804930217.png", 60)
+    wait(1)
+
+    type('s', KeyModifier.CMD + KeyModifier.SHIFT)
+    savefiledlg.wait_dlg_popup(5)
+    savefiledlg.find_target_dir(abs_output_dir)
+    type(Key.ENTER)
+    
+    close_pdfs()

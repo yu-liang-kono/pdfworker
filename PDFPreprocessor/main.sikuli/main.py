@@ -23,8 +23,8 @@ DIR_PAGE = os.path.join(cwd, 'page_643e7daec8e111e2875300254bc4dbd2')
 DIR_SRGB = os.path.join(cwd, 'srgb_bc85c170c8e311e2b3d400254bc4dbd2')
 DIR_VTI = os.path.join(cwd, 'vti_0df3c90fc8e611e2bd9000254bc4dbd2')
 DIR_TIFF = os.path.join(cwd, 'tiff_440f7ff0c9bb11e2b0db00254bc4dbd2')
-DIR_BACK = os.path.join(cwd, 'back_%s' % uuid.uuid1().hex)
-DIR_TEXT = os.path.join(cwd, 'text')
+DIR_BACK = os.path.join(cwd, 'back_fd579c4fc9bf11e2a64100254bc4dbd2')
+DIR_TEXT = os.path.join(cwd, 'text_ea7e07f0c9c311e2ad8100254bc4dbd2')
 DIR_FINAL = os.path.join('final')
 #FILE_CLIPBOARD = 'clipboard'
 
@@ -38,7 +38,7 @@ def get_all_pdfs():
 def create_intermediate_files():
     """Create directories for intermediate files."""
 
-    dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK)
+    dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT)
     
     for dir in dirs:
         try:
@@ -50,7 +50,7 @@ def create_intermediate_files():
 def cleanup_intermediate_files():
     """Clean up directories for intermediate files."""
 
-    for dir in (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK):
+    for dir in (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT):
         shutil.rmtree(os.path.join(cwd, dir))
 
     
@@ -75,8 +75,11 @@ def do_preprocess(pdf_files):
             vti_pdf = os.path.join(DIR_VTI, file)
 
             #pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
-             
-        pdfutil.merge_tiff(DIR_TIFF, DIR_BACK)
+
+            pdfutil.convert_text(vti_pdf, DIR_TEXT)
+            return
+                         
+        #pdfutil.merge_tiff(DIR_TIFF, DIR_BACK)
 
         #cleanup_intermediate_files()
 
