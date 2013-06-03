@@ -118,3 +118,6 @@ if __name__ == "__main__":
     with closing(open(output, 'wb')) as f:
         f.write(pdf_doc.serialize())
 
+    # clean up
+    if os.path.exists('chromedriver.log'):
+        os.unlink('chromedriver.log')
