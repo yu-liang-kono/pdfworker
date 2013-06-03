@@ -519,6 +519,7 @@ def convert_text(abs_src, abs_output_dir):
 
     return
     try:
+        # TODO minimize search region
         click(Pattern("1369984261725.png").targetOffset(-25,0))
     except FindFailed, e:
         print unicode(e)
@@ -601,8 +602,8 @@ def optimize(abs_src, output_name):
     open_pdf(abs_src)
 
     _move_mouse_top()
-    acrobat_pattern = find(ACROBAT_STATUS_BAR)
-    file_pattern = acrobat_pattern.nearby(150).find("1369971661059.png")
+    acrobat_pattern = _find_acrobat_pattern()
+    file_pattern = _find_in_acrobat_status_bar(acrobat_pattern, FILE_STATUS_BAR)
     click(file_pattern)
     save_as_pattern = file_pattern.nearby(150).find("1369971712516.png")
     hover(save_as_pattern)
@@ -621,7 +622,6 @@ def optimize(abs_src, output_name):
     type(Key.ENTER)
 
     output_file = os.path.join(os.path.dirname(abs_src), output_name + '.pdf')
-    while not os.path.exists(output_file):
-        wait(1)
+    _wait_until_exist(output_file)
 
     close_pdfs()
