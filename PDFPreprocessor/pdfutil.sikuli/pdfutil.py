@@ -52,13 +52,13 @@ class ActionWizard(object):
     def do_action(self, abs_output_dir, timeout=60):
 
         action_wizard_pattern = self._hover_action_wizard_menu()
-        click(action_wizard_pattern.nearby(100).right(250).find(self.action_menu))
+        click(self._find_action(action_wizard_pattern))
         
         savefiledlg.wait_dlg_popup(timeout)
         savefiledlg.find_target_dir(abs_output_dir)
         type(Key.ENTER)
 
-        wait("1369889558051.png")
+        wait("1369889558051.png", 10)
         type(Key.ENTER)
 
     def _hover_action_wizard_menu(self):
@@ -73,18 +73,23 @@ class ActionWizard(object):
 
         return action_wizard_pattern
 
-    def _choose_action(self, action_wizard_pattern):
+    def _find_action(self, action_wizard_pattern):
 
         search_region = action_wizard_pattern.below(250).right(400)
-        _debug_region(search_region, 'xd')
-        action_wizard_pattern.nearby(100).right(250).find(self.action_menu)
-
+        
+        try:
+            return search_region.find(self.action_menu)
+        except FindFailed, e:
+            more_action_pattern = search_region.find("1370228616873.png")
+            hover(more_action_pattern)
+            return more_action_pattern.right(400).nearby(250).find(self.action_menu)
         
 
 def _debug_region(region, output_file):
-
-    f = capture(region.getX(), region.getY(), region.getW(), region.getH())
-    shutil.move(f, os.path.expanduser(os.path.join('~', 'Desktop', output_file + '.png')))
+    """Given a region, save it as an image."""
+    
+    f = capture(region)
+    shutil.move(f, os.path.expanduser(os.path.join('~', 'Desktop', output_file)))
     
                     
 def _create_desktop_tempdir_and_save():
@@ -145,7 +150,54 @@ def _wait_until_exist(abs_file, wait_second=1):
     while not os.path.exists(abs_file):
         wait(wait_second)
 
-        
+
+def _find_acrobat_pattern():
+    """Find Acrobat pattern in status bar."""
+
+    return find(ACROBAT_STATUS_BAR)
+
+
+def _find_in_acrobat_status_bar(acrobat_pattern, target_pattern):
+    """Find pattern in acrobat status bar."""
+
+    return acrobat_pattern.nearby(10).right(250).find(target_pattern)
+
+
+def _init_remove_hidden_info_action():
+    """Perform protection action, it will invoke right column."""
+    
+    _move_mouse_top()
+    acrobat_pattern = _find_acrobat_pattern()
+    view_pattern = _find_in_acrobat_status_bar(acrobat_pattern, VIEW_STATUS_BAR)
+    click(view_pattern)
+    tool_pattern = view_pattern.nearby(15).below(120).find("1370230693219.png")
+    hover(tool_pattern)
+    protection_pattern = tool_pattern.nearby(100).above(15).below(350).right(120).find("1369804425199.png")
+    click(protection_pattern)
+    
+    target_action = wait("1369804512050.png", 5)
+    click(target_action)
+    
+    complete_pattern = wait("1369804581481.png", 60)
+    # wait for all checkboxes appear
+    wait(1)
+
+    return complete_pattern
+
+
+def _init_layer_view():
+    """Initialize layer view in left column."""
+
+    try:
+        layer_btn = find("1369968652342.png")
+        click(layer_btn)
+    except FindFailed, e:
+        print unicode(e)
+        raise PDFUtilError('cannot find out layer button in left column.')
+
+    return layer_btn
+
+
 def get_num_pages(abs_filename):
     """Get the number of pages in a pdf."""
 
@@ -252,17 +304,6 @@ def convert_srgb(abs_src, abs_output_dir):
     action.do_action(abs_output_dir)
 
     close_pdfs()
-    
-
-def _move_tempdir_content_and_destroy(tempdir, abs_output_dir):
-
-    tempdir = os.path.expanduser(os.path.join('~', 'Desktop', tempdir))
-    for file in os.listdir(tempdir):
-        if fnmatch(file, '*.pdf') or fnmatch(file, '*.tiff'):
-            shutil.move(os.path.join(tempdir, file),
-                        os.path.join(abs_output_dir, file))
-            
-    shutil.rmtree(tempdir)
 
     
 def convert_vti(abs_src, abs_output_dir):
@@ -281,13 +322,8 @@ def convert_tiff(abs_src, abs_output_dir):
 
     open_pdf(abs_src)
 
-    try:
-        layer_btn = find("1369968652342.png")
-        click(layer_btn)
-    except FindFailed, e:
-        print unicode(e)
-        raise PDFUtilError('cannot find out layer button in left column.')
-
+    layer_btn = _init_layer_view()
+    
     try:
         text_layer_label = layer_btn.nearby(300).find("1369968826594.png")
         click(text_layer_label.getTarget().offset(-25, 0))
@@ -296,21 +332,8 @@ def convert_tiff(abs_src, abs_output_dir):
         print 'Maybe this page does not have text layer.'
         raise PDFUtilError('cannot find out text layer label in left column')
 
-    # move mouse to the top
-    _move_mouse_top()
-    acrobat_pattern = find(ACROBAT_STATUS_BAR)
-    view_pattern = acrobat_pattern.nearby(200).find("1369971004152.png")
-    click(view_pattern)
-    tool_pattern = view_pattern.nearby(150).find("1369804301256.png")
-    hover(tool_pattern)
-    protection_pattern = tool_pattern.nearby(150).find("1369804425199.png")
-    click(protection_pattern)
-
-    # remove hidden information
-    target_action = wait("1369804512050.png", 5)
-    click(target_action)
-    complete_pattern = wait("1369804581481.png", 60)
-    wait(1) # wait for all checkboxes appear
+    # perform protection action
+    complete_pattern = _init_remove_hidden_info_action()
 
     # first uncheck all checkboxes
     map(lambda x: click(x), complete_pattern.below().findAll("1369808493670.png"))
@@ -334,13 +357,14 @@ def convert_tiff(abs_src, abs_output_dir):
 
     # save as tiff
     _move_mouse_top()
-    file_pattern = acrobat_pattern.nearby(150).find("1369971661059.png")
+    acrobat_pattern = _find_acrobat_pattern()
+    file_pattern = _find_in_acrobat_status_bar(acrobat_pattern, FILE_STATUS_BAR)
     click(file_pattern)
-    save_as_pattern = file_pattern.nearby(150).find("1369971712516.png")
+    save_as_pattern = file_pattern.nearby(50).below(120).find("1369971712516.png")
     hover(save_as_pattern)
-    image_pattern = save_as_pattern.nearby(400).find("1369971777792.png")
+    image_pattern = save_as_pattern.nearby(20).right(180).below(150).right(150).find("1370231950210.png")   
     hover(image_pattern)
-    tiff_pattern = image_pattern.nearby(100).find("1369971820441.png")
+    tiff_pattern = image_pattern.above(20).right(150).below(80).right(110).find("1369971820441.png")
     click(tiff_pattern)
 
     # deal with save file dialog
@@ -349,14 +373,13 @@ def convert_tiff(abs_src, abs_output_dir):
     click(tiff_config_region.getTarget().offset(130, 0))
     _configure_tiff_setting()
     savefiledlg.find_target_dir(abs_output_dir)
-    click(tiff_config_region.nearby(125).find(savefiledlg.SAVE_BUTTON))
-
+    type(Key.ENTER)
+    
     # wait until tiff saved
     basename = os.path.basename(abs_src)
     base, ext = os.path.splitext(basename)
     output_tiff = os.path.join(abs_output_dir, '%s.tiff' % base)
-    while not os.path.exists(output_tiff):
-        wait(1)
+    _wait_until_exist(output_tiff)
 
     # quit
     type('w', KeyModifier.CMD)
@@ -487,35 +510,20 @@ def convert_text(abs_src, abs_output_dir):
 
     open_pdf(abs_src)
 
-    try:
-        layer_btn = find("1369968652342.png")
-        click(layer_btn)
-    except FindFailed, e:
-        print unicode(e)
-        raise PDFUtilError('cannot find out layer button in left column.')
+    layer_btn = _init_layer_view()
 
     layer_btn_region = layer_btn.nearby(200)
+    _debug_region(layer_btn_region, 'xd')
     for x in layer_btn_region.findAll("1369984163231.png"):
         click(x)
 
+    return
     try:
         click(Pattern("1369984261725.png").targetOffset(-25,0))
     except FindFailed, e:
         print unicode(e)
 
-    _move_mouse_top()
-    acrobat_pattern = find(ACROBAT_STATUS_BAR)
-    view_pattern = acrobat_pattern.nearby(200).find("1369971004152.png")
-    click(view_pattern)
-    tool_pattern = view_pattern.nearby(150).find("1369804301256.png")
-    hover(tool_pattern)
-    protection_pattern = tool_pattern.nearby(150).find("1369804425199.png")
-    click(protection_pattern)
-    
-    target_action = wait("1369804512050.png", 5)
-    click(target_action)
-    complete_pattern = wait("1369804581481.png", 60)
-    wait(1) # wait for all checkboxes appear
+    complete_pattern = _init_remove_hidden_info_action()
 
     # first uncheck all checkboxes
     map(lambda x: click(x), complete_pattern.below().findAll("1369808493670.png"))

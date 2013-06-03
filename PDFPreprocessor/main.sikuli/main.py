@@ -68,17 +68,17 @@ def do_preprocess(pdf_files):
             file = '%04d.pdf' % i
             page_pdf = os.path.join(DIR_PAGE, file)
        
-            #pdfutil.convert_srgb(page_pdf, DIR_SRGB)
+            pdfutil.convert_srgb(page_pdf, DIR_SRGB)
             srgb_pdf = os.path.join(DIR_SRGB, file)
  
             pdfutil.convert_vti(srgb_pdf, DIR_VTI)
             vti_pdf = os.path.join(DIR_VTI, file)
-            return
 
-            #pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
-
-            #pdfutil.convert_text(vti_pdf, DIR_TEXT)
+            pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
             #return
+
+            pdfutil.convert_text(vti_pdf, DIR_TEXT)
+            return
         return         
         #pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')
         output_text_pdf = '%s_text' % base
