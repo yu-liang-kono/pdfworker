@@ -2,7 +2,9 @@
 import fnmatch
 import os
 import os.path
+import shutil
 import sys
+import uuid
 
 cwd = os.path.dirname(getBundlePath())
 if cwd not in sys.path:
@@ -12,18 +14,17 @@ if cwd not in sys.path:
 
 # local library imports
 import pdfutil
-import preview
 reload(pdfutil)
-reload(preview)
 
 # intermediate result directories
-DIR_PREVIEW = 'preview'
-DIR_SRGB = 'srgb'
-DIR_VTI = 'vti'
-DIR_TIFF = 'tiff'
-DIR_BACK = 'back'
-DIR_TEXT = 'text'
-DIR_FINAL = 'final'
+DIR_PAGE = os.path.join(cwd, 'page_643e7daec8e111e2875300254bc4dbd2')
+DIR_SRGB = os.path.join(cwd, 'srgb_bc85c170c8e311e2b3d400254bc4dbd2')
+DIR_VTI = os.path.join(cwd, 'vti_0df3c90fc8e611e2bd9000254bc4dbd2')
+DIR_TIFF = os.path.join(cwd, 'tiff_440f7ff0c9bb11e2b0db00254bc4dbd2')
+DIR_BACK = os.path.join(cwd, 'back_fd579c4fc9bf11e2a64100254bc4dbd2')
+DIR_TEXT = os.path.join(cwd, 'text_ea7e07f0c9c311e2ad8100254bc4dbd2')
+DIR_FINAL = os.path.join('final')
+#FILE_CLIPBOARD = 'clipboard'
 
 
 def get_all_pdfs():
@@ -32,16 +33,11 @@ def get_all_pdfs():
     return filter(lambda f: fnmatch.fnmatch(f, '*.pdf'), os.listdir(cwd))
 
 
-def create_intermediate_dirs(pdf_files):
+def create_intermediate_files():
     """Create directories for intermediate files."""
 
-    dirs = [DIR_PREVIEW, DIR_SRGB, DIR_VTI, DIR_TIFF,
-            DIR_BACK, DIR_TEXT, DIR_FINAL]
+    dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT)
     
-    for pdf_file in pdf_files:
-        root, ext = os.path.splitext(pdf_file)
-        dirs.append(os.path.join(DIR_TIFF, root))
-        
     for dir in dirs:
         try:
             os.mkdir(os.path.join(cwd, dir))
@@ -49,31 +45,61 @@ def create_intermediate_dirs(pdf_files):
             print 'directory (', dir, ') already exists'
 
 
-def work_on(pdf_file):
-    """Main function."""
+def cleanup_intermediate_files():
+    """Clean up directories for intermediate files."""
 
-    queue = [pdf_file]
-    output = []
+    for dir in (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT):
+        shutil.rmtree(os.path.join(cwd, dir))
+
     
-    while len(queue) > 0:
-        file = queue[0]
-        #preview_export(pdf_file)
-        #convert_to_srgb(pdf_file)
-        #split_layer(pdf_file)
-        
-        queue = queue[1:]
-        output.append(file)
-        
 def do_preprocess(pdf_files):
     """Main loop for each pdf file."""
 
     for pdf_file in pdf_files:
-        work_on(pdf_file)
+
+        base, ext = os.path.splitext(pdf_file)
+        
+        create_intermediate_files()
+        
+        # 1) split a pdf file, a page a pdf
+        #num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
+        num_pages = 12
+        for i in xrange(1, num_pages + 1):
+            file = '%04d.pdf' % i
+            page_pdf = os.path.join(DIR_PAGE, file)
+       
+            pdfutil.convert_srgb(page_pdf, DIR_SRGB)
+            srgb_pdf = os.path.join(DIR_SRGB, file)
+ 
+            pdfutil.convert_vti(srgb_pdf, DIR_VTI)
+            vti_pdf = os.path.join(DIR_VTI, file)
+
+            pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
+            #return
+
+            pdfutil.convert_text(vti_pdf, DIR_TEXT)
+            return
+        return         
+        #pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')
+        output_text_pdf = '%s_text' % base
+        #pdfutil.merge_to_single_pdf(DIR_TEXT, DIR_TEXT, output_text_pdf)
+        output_background_pdf = os.path.join(DIR_BACK, 'back.pdf')
+        output_text_pdf = os.path.join(DIR_TEXT, output_text_pdf + '.pdf')
+        #pdfutil.export_by_preview(output_text_pdf)
+        merged_pdf = os.path.join(cwd, '%s_merge.pdf' % base)
+        pdfutil.merge_text_and_back(output_text_pdf, output_background_pdf,
+                                    merged_pdf)
+
+        final_pdf = '%s_final' % base
+        pdfutil.optimize(merged_pdf, final_pdf)
+        os.unlink(merged_pdf)        
+    
+        #cleanup_intermediate_files()
 
 def main():
 
     pdf_files = get_all_pdfs()
-    create_intermediate_dirs(pdf_files)
+    #create_intermediate_files(pdf_files)
     do_preprocess(pdf_files)
 
        
