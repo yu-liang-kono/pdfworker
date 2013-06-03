@@ -16,19 +16,32 @@
       reader.readAsText(file);
       return reader.onloadend = function() {
         return $scope.$apply(function() {
-          var data, _i, _len, _ref, _results;
+          var data, _i, _len, _ref;
 
           $scope.pageData = JSON.parse(reader.result);
           $scope.cluster = [];
           $scope.numCluster = 1;
           _ref = $scope.pageData.data;
-          _results = [];
           for (_i = 0, _len = _ref.length; _i < _len; _i++) {
             data = _ref[_i];
             $scope.cluster.push(0);
-            _results.push(data.c = 0);
+            data.c = 0;
           }
-          return _results;
+          return _.defer(function() {
+            var $text;
+
+            $text = $('.text');
+            return $text.each(function() {
+              var $this, defaultHeight, defaultWidth, h, w;
+
+              $this = $(this);
+              w = $this.outerWidth();
+              h = $this.outerHeight();
+              defaultWidth = parseFloat($this.attr('data-width'));
+              defaultHeight = parseFloat($this.attr('data-height'));
+              return $this.css('-webkit-transform', "scale(" + (defaultWidth / w) + ", " + (defaultHeight / h) + ")");
+            });
+          });
         });
       };
     };

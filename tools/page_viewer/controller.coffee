@@ -21,6 +21,16 @@ PageController = ($scope) ->
 					$scope.cluster.push(0)
 					data.c = 0
 
+				_.defer () ->
+					$text = $('.text')
+					$text.each () ->
+						$this = $(@)
+						w = $this.outerWidth()
+						h = $this.outerHeight()
+						defaultWidth = parseFloat($this.attr('data-width'))
+						defaultHeight = parseFloat($this.attr('data-height'))
+						$this.css('-webkit-transform', "scale(#{defaultWidth / w}, #{defaultHeight / h})")
+
 	$scope.getClusterColor = (cluster) ->
 
 		return "hsla(0, 0, 0, 0)" if $scope.numCluster is 1

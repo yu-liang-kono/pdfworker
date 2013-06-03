@@ -59,7 +59,9 @@
 				<div id="page" style="width: {{pageData.width}}px; height: {{pageData.height}}px;">
 					<div ng-repeat="data in pageData.data" class="text"
 						 style="top: {{data.y}}px; left: {{data.x}}px; font-size: {{data.h}}px; -webkit-transform-origin: 0 0; -webkit-transform: scale({{data.sx}}, {{data.sy}}); background-color: {{getClusterColor(data.c)}}"
-						 title="{{data.c}}"><!--
+						 title="{{data.c}}"
+						 data-width="{{data.w}}"
+						 data-height="{{data.h}}"><!--
 						-->{{data.t}}<!--
 					--></div>
 				</div>
@@ -71,5 +73,6 @@
 	<script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.0.6/angular.min.js"></script>
 	<script src="TextRectangle.js"></script>
 	<script src="controller.js"></script>
+	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
 
 </html>
