@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 
 # standard library imports
+from contextlib import closing
 import logging as logger
+import os
+import os.path
 import re
 import time
+import subprocess
 import sys
 
 # third party related imports
@@ -95,16 +99,80 @@ class PDFPage(object):
         return ujson.dumps(self.__json__(), ensure_ascii=False)
 
     @classmethod
-    def create_by_json(cls, serialized):
+    def create_by_json(cls, serialized=None, deserialized=None):
         """Deserialize to PDFPage."""
 
-        deserialized = ujson.loads(serialized)
+        if deserialized is None:
+            deserialized = ujson.loads(serialized)
 
         ret = PDFPage()
         ret.page_num = deserialized.get('page', 0)
         ret.width = deserialized.get('width', 0)
         ret.height = deserialized.get('height', 0)
         ret.data = deserialized.get('data')
+
+        return ret
+
+    @classmethod
+    def create_by_xpdf(cls, filename, pages=None):
+        """Create a bunch of PDFPages by xpdf utility program pdftotext."""
+
+        def _parse_bbox_html(html):
+
+            with closing(open(html, 'rb')) as f:
+                data = f.read().decode('utf8')
+                start = data.find('<doc>')
+                end = data.find('</doc>') + 6
+
+            pages = []
+
+            jq = PyQuery(data[start:end])
+            page_elements = jq('page')
+            for i, pg in enumerate(page_elements):
+                page_obj = {
+                    'width': float(pg.attrib['width']),
+                    'height': float(pg.attrib['height']),
+                    'page': i + 1,
+                    'data': [],
+                }
+
+                word_elements = pg.findall('word')
+                for word in word_elements:
+                    min_x = float(word.attrib['xMin'])
+                    max_x = float(word.attrib['xMax'])
+                    min_y = float(word.attrib['yMin'])
+                    max_y = float(word.attrib['yMax'])
+                    page_obj['data'].append({
+                        'x': min_x, 'y': min_y, 'sx': 1, 'sy': 1,
+                        'w': max_x - min_x, 'h': max_y - min_y,
+                        't': word.text,
+                    })
+
+                pages.append(page_obj)
+
+            return pages
+
+
+        ret = []
+
+        base, ext = os.path.splitext(filename)
+
+        if pages is None:
+            subprocess.check_call(('pdftotext', '-bbox', filename))
+            data = _parse_bbox_html(base + '.html')
+            for page_data in data:
+                ret.append(PDFPage.create_by_json(deserialized=page_data))
+        else:
+            for p in pages:
+                subprocess.check_call(
+                    ('pdftotext', '-f', p, '-l', p, '-bbox', filename)
+                )
+                data = _parse_bbox_html(base + '.html')
+                pdf_page = PDFPage.create_by_json(deserialized=data[0])
+                pdf_page.page = p
+                ret.append(pdf_page)
+
+        os.unlink(base + '.html')
 
         return ret
 
