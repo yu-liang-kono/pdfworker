@@ -83,7 +83,7 @@ def output_page_json(page, dirname):
         f.write(page.serialize())
 
 
-if __name__ == "__main__":
+def main():
 
     arg_parser = create_argument_parser()
     arg_dict = vars(arg_parser.parse_args())
@@ -121,3 +121,8 @@ if __name__ == "__main__":
     # clean up
     if os.path.exists('chromedriver.log'):
         os.unlink('chromedriver.log')
+
+
+if __name__ == "__main__":
+
+    main()
