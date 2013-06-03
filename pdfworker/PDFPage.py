@@ -98,6 +98,20 @@ class PDFPage(object):
 
         return ujson.dumps(self.__json__(), ensure_ascii=False)
 
+    def scale(self, scale_x=1, scale_y=1):
+        """Scale page."""
+
+        self.width *= scale_x
+        self.height *= scale_y
+        for bbox in self.data:
+            for attr in ('x', 'w', 'sx'):
+                if attr in bbox:
+                    bbox[attr] *= scale_x
+
+            for attr in ('y', 'h', 'sy'):
+                if attr in bbox:
+                    bbox[attr] *= scale_y
+
     @classmethod
     def create_by_json(cls, serialized=None, deserialized=None):
         """Deserialize to PDFPage."""
@@ -165,7 +179,7 @@ class PDFPage(object):
         else:
             for p in pages:
                 subprocess.check_call(
-                    ('pdftotext', '-f', p, '-l', p, '-bbox', filename)
+                    ('pdftotext', '-f', str(p), '-l', str(p), '-bbox', filename)
                 )
                 data = _parse_bbox_html(base + '.html')
                 pdf_page = PDFPage.create_by_json(deserialized=data[0])
