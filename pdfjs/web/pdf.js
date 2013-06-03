@@ -16,8 +16,8 @@
  */
 
 var PDFJS = {};
-PDFJS.version = '0.8.158';
-PDFJS.build = 'f07564b';
+PDFJS.version = '0.8.207';
+PDFJS.build = '3b86ebe';
 
 (function pdfjsWrapper() {
   // Use strict in our context only - users might not want it
@@ -178,22 +178,24 @@ var NetworkManager = (function NetworkManagerClosure() {
 
       delete this.pendingRequests[xhrId];
 
-      if (xhr.status === 0) {
+      // success status == 0 can be on ftp, file and other protocols
+      if (xhr.status === 0 && /^https?:/i.test(this.url)) {
         if (pendingRequest.onError) {
           pendingRequest.onError(xhr.status);
         }
         return;
       }
+      var xhrStatus = xhr.status || OK_RESPONSE;
 
       // From http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35.2:
       // "A server MAY ignore the Range header". This means it's possible to
       // get a 200 rather than a 206 response from a range request.
       var ok_response_on_range_request =
-          xhr.status === OK_RESPONSE &&
+          xhrStatus === OK_RESPONSE &&
           pendingRequest.expectedStatus === PARTIAL_CONTENT_RESPONSE;
 
       if (!ok_response_on_range_request &&
-          xhr.status !== pendingRequest.expectedStatus) {
+          xhrStatus !== pendingRequest.expectedStatus) {
         if (pendingRequest.onError) {
           pendingRequest.onError(xhr.status);
         }
@@ -203,7 +205,7 @@ var NetworkManager = (function NetworkManagerClosure() {
       this.loadedRequests[xhrId] = true;
 
       var chunk = getArrayBuffer(xhr);
-      if (xhr.status === PARTIAL_CONTENT_RESPONSE) {
+      if (xhrStatus === PARTIAL_CONTENT_RESPONSE) {
         var rangeHeader = xhr.getResponseHeader('Content-Range');
         var matches = /bytes (\d+)-(\d+)\/(\d+)/.exec(rangeHeader);
         var begin = parseInt(matches[1], 10);
@@ -1021,32 +1023,18 @@ var Page = (function PageClosure() {
         var pageData = datas[0];
         var pageQueue = pageData.queue;
         var annotations = datas[1];
-
-        var ensurePromises = [];
-        for (var i = 0, n = annotations.length; i < n; ++i) {
-          var ensurePromise = pdfManager.ensure(annotations[i],
-                                                'getOperatorList',
-                                                [partialEvaluator]);
-          ensurePromises.push(ensurePromise);
+        if (annotations.length === 0) {
+          PartialEvaluator.optimizeQueue(pageQueue);
+          promise.resolve(pageData);
+          return;
         }
 
-        Promise.all(ensurePromises).then(function(listPromises) {
-          Promise.all(listPromises).then(function(datas) {
-            for (var i = 0, n = datas.length; i < n; ++i) {
-              var annotationData = datas[i];
-              var annotationQueue = annotationData.queue;
-              Util.concatenateToArray(pageQueue.fnArray,
-                                      annotationQueue.fnArray);
-              Util.concatenateToArray(pageQueue.argsArray,
-                                      annotationQueue.argsArray);
-              Util.extendObj(pageData.dependencies,
-                             annotationData.dependencies);
-            }
-
-            PartialEvaluator.optimizeQueue(pageQueue);
-
-            promise.resolve(pageData);
-          }, reject);
+        var dependencies = pageData.dependencies;
+        var annotationsReadyPromise = Annotation.appendToOperatorList(
+          annotations, pageQueue, pdfManager, dependencies, partialEvaluator);
+        annotationsReadyPromise.then(function () {
+          PartialEvaluator.optimizeQueue(pageQueue);
+          promise.resolve(pageData);
         }, reject);
       }, reject);
 
@@ -1200,8 +1188,8 @@ var PDFDocument = (function PDFDocumentClosure() {
             throw err;
           }
 
-          warn('The linearization data is not available ' +
-               'or unreadable pdf data is found');
+          info('The linearization data is not available ' +
+               'or unreadable PDF data is found');
           linearization = false;
         }
       }
@@ -3028,11 +3016,14 @@ var TextRenderingMode = {
   STROKE_ADD_TO_PATH: 5,
   FILL_STROKE_ADD_TO_PATH: 6,
   ADD_TO_PATH: 7,
+  FILL_STROKE_MASK: 3,
   ADD_TO_PATH_FLAG: 4
 };
 
 // Minimal font size that would be used during canvas fillText operations.
 var MIN_FONT_SIZE = 16;
+
+var COMPILE_TYPE3_GLYPHS = true;
 
 function createScratchCanvas(width, height) {
   var canvas = document.createElement('canvas');
@@ -3160,6 +3151,157 @@ function addContextCurrentTransform(ctx) {
   }
 }
 
+function compileType3Glyph(imgData) {
+  var POINT_TO_PROCESS_LIMIT = 1000;
+
+  var width = imgData.width, height = imgData.height;
+  var i, j;
+  // we need sparse arrays
+  var points = [];
+  for (i = 0; i <= height; i++) {
+    points.push([]);
+  }
+
+  // finding iteresting points: every point is located between mask pixels,
+  // so there will be points of the (width + 1)x(height + 1) grid. Every point
+  // will have flags assigned based on neighboring mask pixels:
+  //   4 | 8
+  //   --P--
+  //   2 | 1
+  // We are interested only in points with the flags:
+  //   - outside corners: 1, 2, 4, 8;
+  //   - inside corners: 7, 11, 13, 14;
+  //   - and, intersections: 5, 10.
+  var pos = 3, data = imgData.data, lineSize = width * 4, count = 0;
+  if (data[3] !== 0) {
+    points[0][0] = 1;
+    ++count;
+  }
+  for (j = 1; j < width; j++) {
+    if (data[pos] !== data[pos + 4]) {
+      points[0][j] = data[pos] ? 2 : 1;
+      ++count;
+    }
+    pos += 4;
+  }
+  if (data[pos] !== 0) {
+    points[0][j] = 2;
+    ++count;
+  }
+  pos += 4;
+  for (i = 1; i < height; i++) {
+    if (data[pos - lineSize] !== data[pos]) {
+      points[i][0] = data[pos] ? 1 : 8;
+      ++count;
+    }
+    for (j = 1; j < width; j++) {
+      var f1 = data[pos + 4] ? 1 : 0;
+      var f2 = data[pos] ? 1 : 0;
+      var f4 = data[pos - lineSize] ? 1 : 0;
+      var f8 = data[pos - lineSize + 4] ? 1 : 0;
+      var fSum = f1 + f2 + f4 + f8;
+      if (fSum === 1 || fSum === 3 || (fSum === 2 && f1 === f4)) {
+        points[i][j] = f1 | (f2 << 1) | (f4 << 2) | (f8 << 3);
+        ++count;
+      }
+      pos += 4;
+    }
+    if (data[pos - lineSize] !== data[pos]) {
+      points[i][j] = data[pos] ? 2 : 4;
+      ++count;
+    }
+    pos += 4;
+
+    if (count > POINT_TO_PROCESS_LIMIT) {
+      return null;
+    }
+  }
+  pos -= lineSize;
+  if (data[pos] !== 0) {
+    points[i][0] = 8;
+    ++count;
+  }
+  for (j = 1; j < width; j++) {
+    if (data[pos] !== data[pos + 4]) {
+      points[i][j] = data[pos] ? 4 : 8;
+      ++count;
+    }
+    pos += 4;
+  }
+  if (data[pos] !== 0) {
+    points[i][j] = 4;
+    ++count;
+  }
+  if (count > POINT_TO_PROCESS_LIMIT) {
+    return null;
+  }
+
+  // building outlines
+  var outline = [];
+  outline.push('c.save();');
+  // the path shall be painted in [0..1]x[0..1] space
+  outline.push('c.scale(' + (1 / width) + ',' +  (-1 / height) + ');');
+  outline.push('c.translate(0,-' + height + ');');
+  outline.push('c.beginPath();');
+  for (i = 0; i <= height; i++) {
+    if (points[i].length === 0) {
+      continue;
+    }
+    var js = null;
+    for (js in points[i]) {
+      break;
+    }
+    if (js === null) {
+      continue;
+    }
+    var i0 = i, j0 = (j = +js);
+
+    outline.push('c.moveTo(' + j + ',' + i + ');');
+    var type = points[i][j], d = 0;
+    do {
+      if (type === 5 || type === 10) {
+        // line crossed: following dirrection we followed
+        points[i0][j0] = type | (15 ^ d); // changing direction for "future hit"
+        type |= d;
+      }
+
+      switch (type) {
+      case 1:
+      case 13:
+        do { i0++; } while (!points[i0][j0]);
+        d = 9;
+        break;
+      case 4:
+      case 7:
+        do { i0--; } while (!points[i0][j0]);
+        d = 6;
+        break;
+      case 8:
+      case 14:
+        do { j0++; } while (!points[i0][j0]);
+        d = 12;
+        break;
+      case 2:
+      case 11:
+        do { j0--; } while (!points[i0][j0]);
+        d = 3;
+        break;
+      }
+      outline.push('c.lineTo(' + j0 + ',' + i0 + ');');
+
+      type = points[i0][j0];
+      delete points[i0][j0];
+    } while (j0 !== j || i0 !== i);
+    --i;
+  }
+  outline.push('c.fill();');
+  outline.push('c.beginPath();');
+  outline.push('c.restore();');
+
+  /*jshint -W054 */
+  return new Function('c', outline.join('\n'));
+}
+
 var CanvasExtraState = (function CanvasExtraStateClosure() {
   function CanvasExtraState(old) {
     // Are soft masks and alpha values shapes or opacities?
@@ -3230,6 +3372,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     this.textLayer = textLayer;
     this.imageLayer = imageLayer;
     this.groupStack = [];
+    this.processingType3 = null;
     if (canvasCtx) {
       addContextCurrentTransform(canvasCtx);
     }
@@ -3628,10 +3771,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.current = old.clone();
     },
     restore: function CanvasGraphics_restore() {
-      if ('textClipLayers' in this) {
-        this.completeTextClipping();
-      }
-
       var prev = this.stateStack.pop();
       if (prev) {
         this.current = prev;
@@ -3779,64 +3918,25 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.current.y = this.current.lineY = 0;
     },
     endText: function CanvasGraphics_endText() {
-      if ('textClipLayers' in this) {
-        this.swapImageForTextClipping();
+      if (!('pendingTextPaths' in this)) {
+        this.ctx.beginPath();
+        return;
       }
-    },
-    getCurrentTextClipping: function CanvasGraphics_getCurrentTextClipping() {
+      var paths = this.pendingTextPaths;
       var ctx = this.ctx;
-      var transform = ctx.mozCurrentTransform;
-      if ('textClipLayers' in this) {
-        // we need to reset only font and transform
-        var maskCtx = this.textClipLayers.maskCtx;
-        maskCtx.setTransform.apply(maskCtx, transform);
-        maskCtx.font = ctx.font;
-        return maskCtx;
+
+      ctx.save();
+      ctx.beginPath();
+      for (var i = 0; i < paths.length; i++) {
+        var path = paths[i];
+        ctx.setTransform.apply(ctx, path.transform);
+        ctx.translate(path.x, path.y);
+        path.addToPath(ctx, path.fontSize);
       }
-
-      var canvasWidth = ctx.canvas.width;
-      var canvasHeight = ctx.canvas.height;
-      // keeping track of the text clipping of the separate canvas
-      var maskCanvas = createScratchCanvas(canvasWidth, canvasHeight);
-      var maskCtx = maskCanvas.getContext('2d');
-      maskCtx.setTransform.apply(maskCtx, transform);
-      maskCtx.font = ctx.font;
-      var textClipLayers = {
-        maskCanvas: maskCanvas,
-        maskCtx: maskCtx
-      };
-      this.textClipLayers = textClipLayers;
-      return maskCtx;
-    },
-    swapImageForTextClipping:
-      function CanvasGraphics_swapImageForTextClipping() {
-      var ctx = this.ctx;
-      var canvasWidth = ctx.canvas.width;
-      var canvasHeight = ctx.canvas.height;
-      // saving current image content and clearing whole canvas
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      var data = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-      this.textClipLayers.imageData = data;
-      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
       ctx.restore();
-    },
-    completeTextClipping: function CanvasGraphics_completeTextClipping() {
-      var ctx = this.ctx;
-      // applying mask to the image (result is saved in maskCanvas)
-      var maskCtx = this.textClipLayers.maskCtx;
-      maskCtx.setTransform(1, 0, 0, 1, 0, 0);
-      maskCtx.globalCompositeOperation = 'source-in';
-      maskCtx.drawImage(ctx.canvas, 0, 0);
-
-      // restoring image data and applying the result of masked drawing
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.putImageData(this.textClipLayers.imageData, 0, 0);
-      ctx.drawImage(this.textClipLayers.maskCanvas, 0, 0);
-      ctx.restore();
-
-      delete this.textClipLayers;
+      ctx.clip();
+      ctx.beginPath();
+      delete this.pendingTextPaths;
     },
     setCharSpacing: function CanvasGraphics_setCharSpacing(spacing) {
       this.current.charSpacing = spacing;
@@ -3954,6 +4054,59 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       return geometry;
     },
 
+    paintChar: function (character, x, y) {
+      var ctx = this.ctx;
+      var current = this.current;
+      var font = current.font;
+      var fontSize = current.fontSize / current.fontSizeScale;
+      var textRenderingMode = current.textRenderingMode;
+      var fillStrokeMode = textRenderingMode &
+        TextRenderingMode.FILL_STROKE_MASK;
+      var isAddToPathSet = !!(textRenderingMode &
+        TextRenderingMode.ADD_TO_PATH_FLAG);
+
+      var addToPath;
+      if (font.disableFontFace || isAddToPathSet) {
+        addToPath = font.renderer.getPathGenerator(character);
+      }
+
+      if (font.disableFontFace) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.beginPath();
+        addToPath(ctx, fontSize);
+        if (fillStrokeMode === TextRenderingMode.FILL ||
+            fillStrokeMode === TextRenderingMode.FILL_STROKE) {
+          ctx.fill();
+        }
+        if (fillStrokeMode === TextRenderingMode.STROKE ||
+            fillStrokeMode === TextRenderingMode.FILL_STROKE) {
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else {
+        if (fillStrokeMode === TextRenderingMode.FILL ||
+            fillStrokeMode === TextRenderingMode.FILL_STROKE) {
+          ctx.fillText(character, x, y);
+        }
+        if (fillStrokeMode === TextRenderingMode.STROKE ||
+            fillStrokeMode === TextRenderingMode.FILL_STROKE) {
+          ctx.strokeText(character, x, y);
+        }
+      }
+
+      if (isAddToPathSet) {
+        var paths = this.pendingTextPaths || (this.pendingTextPaths = []);
+        paths.push({
+          transform: ctx.mozCurrentTransform,
+          x: x,
+          y: y,
+          fontSize: fontSize,
+          addToPath: addToPath
+        });
+      }
+    },
+
     showText: function CanvasGraphics_showText(str, skipTextSelection) {
       var ctx = this.ctx;
       var current = this.current;
@@ -3969,7 +4122,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       var textLayer = this.textLayer;
       var geom;
       var textSelection = textLayer && !skipTextSelection ? true : false;
-      var textRenderingMode = current.textRenderingMode;
       var canvasWidth = 0.0;
       var vertical = font.vertical;
       var defaultVMetrics = font.defaultVMetrics;
@@ -3998,6 +4150,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
             continue;
           }
 
+          this.processingType3 = glyph;
           this.save();
           ctx.scale(fontSize, fontSize);
           ctx.transform.apply(ctx, fontMatrix);
@@ -4014,6 +4167,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
           canvasWidth += width;
         }
         ctx.restore();
+        this.processingType3 = null;
       } else {
         ctx.save();
         this.applyTextTransforms();
@@ -4067,10 +4221,6 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
               scaledX = x / fontSizeScale;
               scaledY = 0;
             }
-            if (accent) {
-              scaledAccentX = scaledX + accent.offset.x / fontSizeScale;
-              scaledAccentY = scaledY - accent.offset.y / fontSizeScale;
-            }
 
             if (font.remeasure && width > 0) {
               // some standard fonts may not have the exact width, trying to
@@ -4087,41 +4237,11 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
               }
             }
 
-            switch (textRenderingMode) {
-              default: // other unsupported rendering modes
-              case TextRenderingMode.FILL:
-              case TextRenderingMode.FILL_ADD_TO_PATH:
-                ctx.fillText(character, scaledX, scaledY);
-                if (accent) {
-                  ctx.fillText(accent.fontChar, scaledAccentX, scaledAccentY);
-                }
-                break;
-              case TextRenderingMode.STROKE:
-              case TextRenderingMode.STROKE_ADD_TO_PATH:
-                ctx.strokeText(character, scaledX, scaledY);
-                if (accent) {
-                  ctx.strokeText(accent.fontChar, scaledAccentX, scaledAccentY);
-                }
-                break;
-              case TextRenderingMode.FILL_STROKE:
-              case TextRenderingMode.FILL_STROKE_ADD_TO_PATH:
-                ctx.fillText(character, scaledX, scaledY);
-                ctx.strokeText(character, scaledX, scaledY);
-                if (accent) {
-                  ctx.fillText(accent.fontChar, scaledAccentX, scaledAccentY);
-                  ctx.strokeText(accent.fontChar, scaledAccentX, scaledAccentY);
-                }
-                break;
-              case TextRenderingMode.INVISIBLE:
-              case TextRenderingMode.ADD_TO_PATH:
-                break;
-            }
-            if (textRenderingMode & TextRenderingMode.ADD_TO_PATH_FLAG) {
-              var clipCtx = this.getCurrentTextClipping();
-              clipCtx.fillText(character, scaledX, scaledY);
-              if (accent) {
-                clipCtx.fillText(accent.fontChar, scaledAccentX, scaledAccentY);
-              }
+            this.paintChar(character, scaledX, scaledY);
+            if (accent) {
+              scaledAccentX = scaledX + accent.offset.x / fontSizeScale;
+              scaledAccentY = scaledY - accent.offset.y / fontSizeScale;
+              this.paintChar(accent.fontChar, scaledAccentX, scaledAccentY);
             }
           }
 
@@ -4511,6 +4631,15 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.restore();
     },
 
+    beginAnnotations: function CanvasGraphics_beginAnnotations() {
+      this.save();
+      this.current = new CanvasExtraState();
+    },
+
+    endAnnotations: function CanvasGraphics_endAnnotations() {
+      this.restore();
+    },
+
     beginAnnotation: function CanvasGraphics_beginAnnotation(rect, transform,
                                                              matrix) {
       this.save();
@@ -4562,6 +4691,29 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     paintImageMaskXObject: function CanvasGraphics_paintImageMaskXObject(
                              imgArray, inverseDecode, width, height) {
       var ctx = this.ctx;
+      var glyph = this.processingType3;
+
+      if (COMPILE_TYPE3_GLYPHS && glyph && !('compiled' in glyph)) {
+        var MAX_SIZE_TO_COMPILE = 1000;
+        if (width <= MAX_SIZE_TO_COMPILE && height <= MAX_SIZE_TO_COMPILE) {
+          var pixels = new Uint8Array(width * height * 4);
+          for (var i = 3, ii = pixels.length; i < ii; i += 4) {
+            pixels[i] = 255;
+          }
+          applyStencilMask(imgArray, width, height, inverseDecode, pixels);
+          glyph.compiled =
+            compileType3Glyph({data: pixels, width: width, height: height});
+        } else {
+          glyph.compiled = null;
+        }
+      }
+
+      if (glyph && glyph.compiled) {
+        glyph.compiled(ctx);
+        return;
+      }
+
+
       var tmpCanvas = createScratchCanvas(width, height);
       var tmpCtx = tmpCanvas.getContext('2d');
 
@@ -5300,7 +5452,7 @@ var XRef = (function XRefClosure() {
       if (!('streamState' in this)) {
         // Stores state of the stream as we process it so we can resume
         // from middle of stream in case of missing data error
-        var streamParameters = stream.parameters;
+        var streamParameters = stream.dict;
         var byteWidths = streamParameters.get('W');
         var range = streamParameters.get('Index');
         if (!range) {
@@ -5317,7 +5469,7 @@ var XRef = (function XRefClosure() {
       this.readXRefStream(stream);
       delete this.streamState;
 
-      return stream.parameters;
+      return stream.dict;
     },
 
     readXRefStream: function XRef_readXRefStream(stream) {
@@ -5653,8 +5805,8 @@ var XRef = (function XRefClosure() {
       stream = this.fetch(new Ref(tableOffset, 0));
       if (!isStream(stream))
         error('bad ObjStm stream');
-      var first = stream.parameters.get('First');
-      var n = stream.parameters.get('N');
+      var first = stream.dict.get('First');
+      var n = stream.dict.get('N');
       if (!isInt(first) || !isInt(n)) {
         error('invalid first and n parameters for ObjStm stream');
       }
@@ -5926,14 +6078,23 @@ var Annotation = (function AnnotationClosure() {
     data.rect = Util.normalizeRect(rect);
     data.annotationFlags = dict.get('F');
 
-    var border = dict.get('BS');
-    if (isDict(border)) {
-      var borderWidth = border.has('W') ? border.get('W') : 1;
-      data.border = {
-        width: borderWidth,
-        type: border.get('S') || 'S',
-        rgb: dict.get('C') || [0, 0, 1]
-      };
+    var color = dict.get('C');
+    if (isArray(color) && color.length === 3) {
+      // TODO(mack): currently only supporting rgb; need support different
+      // colorspaces
+      data.color = color;
+    } else {
+      data.color = [0, 0, 0];
+    }
+
+    // Some types of annotations have border style dict which has more
+    // info than the border array
+    if (dict.has('BS')) {
+      var borderStyle = dict.get('BS');
+      data.borderWidth = borderStyle.has('W') ? borderStyle.get('W') : 1;
+    } else {
+      var borderArray = dict.get('Border') || [0, 0, 1];
+      data.borderWidth = borderArray[2];
     }
 
     this.appearance = getDefaultAppearance(dict);
@@ -5954,7 +6115,8 @@ var Annotation = (function AnnotationClosure() {
         'getHtmlElement() should be implemented in subclass');
     },
 
-    getEmptyContainer: function Annotaiton_getEmptyContainer(tagName, rect) {
+    // TODO(mack): Remove this, it's not really that helpful.
+    getEmptyContainer: function Annotation_getEmptyContainer(tagName, rect) {
       assert(!isWorker,
         'getEmptyContainer() should be called from main thread');
 
@@ -6084,6 +6246,46 @@ var Annotation = (function AnnotationClosure() {
     } else {
       TODO('unimplemented annotation type: ' + subtype);
     }
+  };
+
+  Annotation.appendToOperatorList = function Annotation_appendToOperatorList(
+      annotations, pageQueue, pdfManager, dependencies, partialEvaluator) {
+
+    function reject(e) {
+      annotationsReadyPromise.reject(e);
+    }
+
+    var annotationsReadyPromise = new Promise();
+
+    var ensurePromises = [];
+    for (var i = 0, n = annotations.length; i < n; ++i) {
+      var ensurePromise = pdfManager.ensure(annotations[i],
+                                            'getOperatorList',
+                                            [partialEvaluator]);
+      ensurePromises.push(ensurePromise);
+    }
+
+    Promise.all(ensurePromises).then(function(listPromises) {
+      Promise.all(listPromises).then(function(datas) {
+        var fnArray = pageQueue.fnArray;
+        var argsArray = pageQueue.argsArray;
+        fnArray.push('beginAnnotations');
+        argsArray.push([]);
+        for (var i = 0, n = datas.length; i < n; ++i) {
+          var annotationData = datas[i];
+          var annotationQueue = annotationData.queue;
+          Util.concatenateToArray(fnArray, annotationQueue.fnArray);
+          Util.concatenateToArray(argsArray, annotationQueue.argsArray);
+          Util.extendObj(dependencies, annotationData.dependencies);
+        }
+        fnArray.push('endAnnotations');
+        argsArray.push([]);
+
+        annotationsReadyPromise.resolve();
+      }, reject);
+    }, reject);
+
+    return annotationsReadyPromise;
   };
 
   return Annotation;
@@ -6344,7 +6546,24 @@ var LinkAnnotation = (function LinkAnnotationClosure() {
     },
 
     getHtmlElement: function LinkAnnotation_getHtmlElement(commonObjs) {
-      var element = this.getEmptyContainer('a');
+      var rect = this.data.rect;
+      var element = document.createElement('a');
+      var borderWidth = this.data.borderWidth;
+
+      element.style.borderWidth = borderWidth + 'px';
+      var color = this.data.color;
+      var rgb = [];
+      for (var i = 0; i < 3; ++i) {
+        rgb[i] = Math.round(color[i] * 255);
+      }
+      element.style.borderColor = Util.makeCssRgb(rgb);
+      element.style.borderStyle = 'solid';
+
+      var width = rect[2] - rect[0] - 2 * borderWidth;
+      var height = rect[3] - rect[1] - 2 * borderWidth;
+      element.style.width = width + 'px';
+      element.style.height = height + 'px';
+
       element.href = this.data.url || '';
       return element;
     }
@@ -16510,7 +16729,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                 case 'TJ':
                   var chunkPromise = new Promise();
                   chunkPromises.push(chunkPromise);
-                  fontPromise.then(function(items, font) {
+                  fontPromise.then(function(items, chunkPromise, font) {
                     var chunk = '';
                     for (var j = 0, jj = items.length; j < jj; j++) {
                       if (typeof items[j] === 'string') {
@@ -16527,19 +16746,18 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                         }
                       }
                     }
-
                     chunkPromise.resolve(
                         getBidiText(chunk, -1, font.vertical));
-                  }.bind(null, args[0]));
+                  }.bind(null, args[0], chunkPromise));
                   break;
                 case 'Tj':
                   var chunkPromise = new Promise();
                   chunkPromises.push(chunkPromise);
-                  fontPromise.then(function(charCodes, font) {
+                  fontPromise.then(function(charCodes, chunkPromise, font) {
                     var chunk = fontCharsToUnicode(charCodes, font);
                     chunkPromise.resolve(
                         getBidiText(chunk, -1, font.vertical));
-                  }.bind(null, args[0]));
+                  }.bind(null, args[0], chunkPromise));
                   break;
                 case '\'':
                   // For search, adding a extra white space for line breaks
@@ -16547,21 +16765,21 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                   // the text-selection divs.
                   var chunkPromise = new Promise();
                   chunkPromises.push(chunkPromise);
-                  fontPromise.then(function(charCodes, font) {
+                  fontPromise.then(function(charCodes, chunkPromise, font) {
                     var chunk = fontCharsToUnicode(charCodes, font);
                     chunkPromise.resolve(
                         getBidiText(chunk, -1, font.vertical));
-                  }.bind(null, args[0]));
+                  }.bind(null, args[0], chunkPromise));
                   break;
                 case '"':
                   // Note comment in "'"
                   var chunkPromise = new Promise();
                   chunkPromises.push(chunkPromise);
-                  fontPromise.then(function(charCodes, font) {
+                  fontPromise.then(function(charCodes, chunkPromise, font) {
                     var chunk = fontCharsToUnicode(charCodes, font);
                     chunkPromise.resolve(
                         getBidiText(chunk, -1, font.vertical));
-                  }.bind(null, args[2]));
+                  }.bind(null, args[2], chunkPromise));
                   break;
                 case 'Do':
                   if (args[0].code) {
@@ -17318,6 +17536,8 @@ var HINTING_ENABLED = false;
 var SEAC_ANALYSIS_ENABLED = false;
 
 var FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
+
+PDFJS.disableFontFace = false;
 
 var FontFlags = {
   FixedPitch: 1,
@@ -20298,6 +20518,11 @@ var Font = (function FontClosure() {
     mimetype: null,
     encoding: null,
 
+    get renderer() {
+      var renderer = FontRendererFactory.create(this);
+      return shadow(this, 'renderer', renderer);
+    },
+
     exportData: function Font_exportData() {
       var data = {};
       for (var i in this) {
@@ -21149,6 +21374,9 @@ var Font = (function FontClosure() {
         }
       }
 
+      // The following steps modify the original font data, making copy
+      font = new Stream(new Uint8Array(font.getBytes()));
+
       // Check that required tables are present
       var requiredTables = ['OS/2', 'cmap', 'head', 'hhea',
                              'hmtx', 'maxp', 'name', 'post'];
@@ -21843,6 +22071,11 @@ var Font = (function FontClosure() {
     bindDOM: function Font_bindDOM() {
       if (!this.data)
         return null;
+
+      if (PDFJS.disableFontFace) {
+        this.disableFontFace = true;
+        return null;
+      }
 
       var data = bytesToString(this.data);
       var fontName = this.loadedName;
@@ -22594,11 +22827,8 @@ var Type1Parser = (function Type1ParserClosure() {
           case 'Subrs':
             var num = this.readInt();
             this.getToken(); // read in 'array'
-            for (var j = 0; j < num; ++j) {
-              token = this.getToken(); // read in 'dup'
+            while ((token = this.getToken()) === 'dup') {
               var index = this.readInt();
-              if (index > j)
-                j = index;
               var length = this.readInt();
               this.getToken(); // read in 'RD' or '-|'
               var data = stream.makeSubStream(stream.pos + 1, length);
@@ -24479,6 +24709,699 @@ var CFFCompiler = (function CFFCompilerClosure() {
     SYMBOLIC_FONT_GLYPH_OFFSET = 0xF100;
   }
 })();
+
+
+var FontRendererFactory = (function FontRendererFactoryClosure() {
+  function getLong(data, offset) {
+    return (data[offset] << 24) | (data[offset + 1] << 16) |
+           (data[offset + 2] << 8) | data[offset + 3];
+  }
+
+  function getUshort(data, offset) {
+    return (data[offset] << 8) | data[offset + 1];
+  }
+
+  function parseCmap(data, start, end) {
+    var offset = getUshort(data, start + 2) === 1 ? getLong(data, start + 8) :
+                                                    getLong(data, start + 16);
+    var format = getUshort(data, start + offset);
+    if (format === 4) {
+      var length = getUshort(data, start + offset + 2);
+      var segCount = getUshort(data, start + offset + 6) >> 1;
+      var p = start + offset + 14;
+      var ranges = [];
+      for (var i = 0; i < segCount; i++, p += 2) {
+        ranges[i] = {end: getUshort(data, p)};
+      }
+      p += 2;
+      for (var i = 0; i < segCount; i++, p += 2) {
+        ranges[i].start = getUshort(data, p);
+      }
+      for (var i = 0; i < segCount; i++, p += 2) {
+        ranges[i].idDelta = getUshort(data, p);
+      }
+      for (var i = 0; i < segCount; i++, p += 2) {
+        var idOffset = getUshort(data, p);
+        if (idOffset === 0) {
+          continue;
+        }
+        ranges[i].ids = [];
+        for (var j = 0, jj = ranges[i].end - ranges[i].start + 1; j < jj; j++) {
+          ranges[i].ids[j] = getUshort(data, p + idOffset);
+          idOffset += 2;
+        }
+      }
+      return ranges;
+    } else if (format === 12) {
+      var length = getLong(data, start + offset + 4);
+      var groups = getLong(data, start + offset + 12);
+      var p = start + offset + 16;
+      var ranges = [];
+      for (var i = 0; i < groups; i++) {
+        ranges.push({
+          start: getLong(data, p),
+          end: getLong(data, p + 4),
+          idDelta: getLong(data, p + 8) - getLong(data, p)
+        });
+        p += 12;
+      }
+      return ranges;
+    }
+    error('not supported cmap: ' + format);
+  }
+
+  function parseCff(data, start, end) {
+    var properties = {};
+    var parser = new CFFParser(
+      new Stream(data, start, end - start), properties);
+    var cff = parser.parse();
+    return {
+      glyphs: cff.charStrings.objects,
+      subrs: cff.topDict.privateDict && cff.topDict.privateDict.subrsIndex &&
+             cff.topDict.privateDict.subrsIndex.objects,
+      gsubrs: cff.globalSubrIndex && cff.globalSubrIndex.objects
+    };
+  }
+
+  function parseGlyfTable(glyf, loca, isGlyphLocationsLong) {
+    var itemSize, itemDecode;
+    if (isGlyphLocationsLong) {
+      itemSize = 4;
+      itemDecode = function fontItemDecodeLong(data, offset) {
+        return (data[offset] << 24) | (data[offset + 1] << 16) |
+               (data[offset + 2] << 8) | data[offset + 3];
+      };
+    } else {
+      itemSize = 2;
+      itemDecode = function fontItemDecode(data, offset) {
+        return (data[offset] << 9) | (data[offset + 1] << 1);
+      };
+    }
+    var glyphs = [];
+    var startOffset = itemDecode(loca, 0);
+    for (var j = itemSize; j < loca.length; j += itemSize) {
+      var endOffset = itemDecode(loca, j);
+      glyphs.push(glyf.subarray(startOffset, endOffset));
+      startOffset = endOffset;
+    }
+    return glyphs;
+  }
+
+  function lookupCmap(ranges, unicode) {
+    var code = unicode.charCodeAt(0);
+    var l = 0, r = ranges.length - 1;
+    while (l < r) {
+      var c = (l + r + 1) >> 1;
+      if (code < ranges[c].start) {
+        r = c - 1;
+      } else {
+        l = c;
+      }
+    }
+    if (ranges[l].start <= code && code <= ranges[l].end) {
+      return (ranges[l].idDelta + (ranges[l].ids ?
+        ranges[l].ids[code - ranges[l].start] : code)) & 0xFFFF;
+    }
+    return 0;
+  }
+
+  function compileGlyf(code, js, font) {
+    function moveTo(x, y) {
+      js.push('c.moveTo(' + x + ',' + y + ');');
+    }
+    function lineTo(x, y) {
+      js.push('c.lineTo(' + x + ',' + y + ');');
+    }
+    function quadraticCurveTo(xa, ya, x, y) {
+      js.push('c.quadraticCurveTo(' + xa + ',' + ya + ',' +
+                                   x + ',' + y + ');');
+    }
+
+    var i = 0;
+    var numberOfContours = ((code[i] << 24) | (code[i + 1] << 16)) >> 16;
+    var xMin = ((code[i + 2] << 24) | (code[i + 3] << 16)) >> 16;
+    var yMin = ((code[i + 4] << 24) | (code[i + 5] << 16)) >> 16;
+    var xMax = ((code[i + 6] << 24) | (code[i + 7] << 16)) >> 16;
+    var yMax = ((code[i + 8] << 24) | (code[i + 9] << 16)) >> 16;
+    i += 10;
+    if (numberOfContours < 0) {
+      // composite glyph
+      var x = 0, y = 0;
+      do {
+        var flags = (code[i] << 8) | code[i + 1];
+        var glyphIndex = (code[i + 2] << 8) | code[i + 3];
+        i += 4;
+        var arg1, arg2;
+        if ((flags & 0x01)) {
+          arg1 = ((code[i] << 24) | (code[i + 1] << 16)) >> 16;
+          arg2 = ((code[i + 2] << 24) | (code[i + 3] << 16)) >> 16;
+          i += 4;
+        } else {
+          arg1 = code[i++]; arg2 = code[i++];
+        }
+        if ((flags & 0x02)) {
+           x = arg1;
+           y = arg2;
+        } else {
+           x = 0; y = 0; // TODO "they are points" ?
+        }
+        var scaleX = 1, scaleY = 1, scale01 = 0, scale10 = 0;
+        if ((flags & 0x08)) {
+          scaleX =
+          scaleY = ((code[i] << 24) | (code[i + 1] << 16)) / 1073741824;
+          i += 2;
+        } else if ((flags & 0x40)) {
+          scaleX = ((code[i] << 24) | (code[i + 1] << 16)) / 1073741824;
+          scaleY = ((code[i + 2] << 24) | (code[i + 3] << 16)) / 1073741824;
+          i += 4;
+        } else if ((flags & 0x80)) {
+          scaleX = ((code[i] << 24) | (code[i + 1] << 16)) / 1073741824;
+          scale01 = ((code[i + 2] << 24) | (code[i + 3] << 16)) / 1073741824;
+          scale10 = ((code[i + 4] << 24) | (code[i + 5] << 16)) / 1073741824;
+          scaleY = ((code[i + 6] << 24) | (code[i + 7] << 16)) / 1073741824;
+          i += 8;
+        }
+        var subglyph = font.glyphs[glyphIndex];
+        if (subglyph) {
+          js.push('c.save();');
+          js.push('c.transform(' + scaleX + ',' + scale01 + ',' +
+                  scale10 + ',' + scaleY + ',' + x + ',' + y + ');');
+          compileGlyf(subglyph, js, font);
+          js.push('c.restore();');
+        }
+      } while ((flags & 0x20));
+    } else {
+      // simple glyph
+      var endPtsOfContours = [];
+      for (var j = 0; j < numberOfContours; j++) {
+        endPtsOfContours.push((code[i] << 8) | code[i + 1]);
+        i += 2;
+      }
+      var instructionLength = (code[i] << 8) | code[i + 1];
+      i += 2 + instructionLength; // skipping the instructions
+      var numberOfPoints = endPtsOfContours[endPtsOfContours.length - 1] + 1;
+      var points = [];
+      while (points.length < numberOfPoints) {
+        var flags = code[i++], repeat = 1;
+        if ((flags & 0x08)) {
+          repeat += code[i++];
+        }
+        while (repeat-- > 0) {
+          points.push({flags: flags});
+        }
+      }
+      var x = 0, y = 0;
+      for (var j = 0; j < numberOfPoints; j++) {
+        switch (points[j].flags & 0x12) {
+          case 0x00:
+            x += ((code[i] << 24) | (code[i + 1] << 16)) >> 16;
+            i += 2;
+            break;
+          case 0x02:
+            x -= code[i++];
+            break;
+          case 0x12:
+            x += code[i++];
+            break;
+        }
+        points[j].x = x;
+      }
+      for (var j = 0; j < numberOfPoints; j++) {
+        switch (points[j].flags & 0x24) {
+          case 0x00:
+            y += ((code[i] << 24) | (code[i + 1] << 16)) >> 16;
+            i += 2;
+            break;
+          case 0x04:
+            y -= code[i++];
+            break;
+          case 0x24:
+            y += code[i++];
+            break;
+        }
+        points[j].y = y;
+      }
+
+      var startPoint = 0;
+      for (var i = 0; i < numberOfContours; i++) {
+        var endPoint = endPtsOfContours[i];
+        // contours might have implicit points, which is located in the middle
+        // between two neighboring off-curve points
+        var contour = points.slice(startPoint, endPoint + 1);
+        if ((contour[0].flags & 1)) {
+          contour.push(contour[0]); // using start point at the contour end
+        } else if ((contour[contour.length - 1].flags & 1)) {
+          // first is off-curve point, trying to use one from the end
+          contour.unshift(contour[contour.length - 1]);
+        } else {
+          // start and end are off-curve points, creating implicit one
+          var p = {
+            flags: 1,
+            x: (contour[0].x + contour[contour.length - 1].x) / 2,
+            y: (contour[0].y + contour[contour.length - 1].y) / 2
+          };
+          contour.unshift(p);
+          contour.push(p);
+        }
+        moveTo(contour[0].x, contour[0].y);
+        for (var j = 1, jj = contour.length; j < jj; j++) {
+          if ((contour[j].flags & 1)) {
+            lineTo(contour[j].x, contour[j].y);
+          } else if ((contour[j + 1].flags & 1)){
+            quadraticCurveTo(contour[j].x, contour[j].y,
+                             contour[j + 1].x, contour[j + 1].y);
+            j++;
+          } else {
+            quadraticCurveTo(contour[j].x, contour[j].y,
+              (contour[j].x + contour[j + 1].x) / 2,
+              (contour[j].y + contour[j + 1].y) / 2);
+          }
+        }
+        startPoint = endPoint + 1;
+      }
+    }
+  }
+
+  function compileCharString(code, js, font) {
+    var stack = [];
+    var x = 0, y = 0;
+    var stems = 0;
+
+    function moveTo(x, y) {
+      js.push('c.moveTo(' + x + ',' + y + ');');
+    }
+    function lineTo(x, y) {
+      js.push('c.lineTo(' + x + ',' + y + ');');
+    }
+    function bezierCurveTo(x1, y1, x2, y2, x, y) {
+      js.push('c.bezierCurveTo(' + x1 + ',' + y1 + ',' + x2 + ',' + y2 + ',' +
+                                   x + ',' + y + ');');
+    }
+
+    function parse(code) {
+      var i = 0;
+      while (i < code.length) {
+        var stackClean = false;
+        var v = code[i++];
+        switch (v) {
+          case 1: // hstem
+            stems += stack.length >> 1;
+            stackClean = true;
+            break;
+          case 3: // vstem
+            stems += stack.length >> 1;
+            stackClean = true;
+            break;
+          case 4: // vmoveto
+            y += stack.pop();
+            moveTo(x, y);
+            stackClean = true;
+            break;
+          case 5: // rlineto
+            while (stack.length > 0) {
+              x += stack.shift();
+              y += stack.shift();
+              lineTo(x, y);
+            }
+            break;
+          case 6: // hlineto
+            while (stack.length > 0) {
+              x += stack.shift();
+              lineTo(x, y);
+              if (stack.length === 0) {
+                break;
+              }
+              y += stack.shift();
+              lineTo(x, y);
+            }
+            break;
+          case 7: // vlineto
+            while (stack.length > 0) {
+              y += stack.shift();
+              lineTo(x, y);
+              if (stack.length === 0) {
+                break;
+              }
+              x += stack.shift();
+              lineTo(x, y);
+            }
+            break;
+          case 8: // rrcurveto
+            while (stack.length > 0) {
+              var xa = x + stack.shift(), ya = y + stack.shift();
+              var xb = xa + stack.shift(), yb = ya + stack.shift();
+              x = xb + stack.shift(); y = yb + stack.shift();
+              bezierCurveTo(xa, ya, xb, yb, x, y);
+            }
+            break;
+          case 10: // callsubr
+            var n = stack.pop() + font.subrsBias;
+            var subrCode = font.subrs[n];
+            if (subrCode) {
+              parse(subrCode);
+            }
+            break;
+          case 11: // return
+            return;
+          case 12:
+            v = code[i++];
+            switch (v) {
+              case 34: // flex
+                var xa = x + stack.shift();
+                var xb = xa + stack.shift(), y1 = y + stack.shift();
+                x = xb + stack.shift();
+                bezierCurveTo(xa, y, xb, y1, x, y1);
+                var xa = x + stack.shift();
+                var xb = xa + stack.shift();
+                x = xb + stack.shift();
+                bezierCurveTo(xa, y1, xb, y, x, y);
+                break;
+              case 35: // flex
+                var xa = x + stack.shift(), ya = y + stack.shift();
+                var xb = xa + stack.shift(), yb = ya + stack.shift();
+                x = xb + stack.shift(); y = yb + stack.shift();
+                bezierCurveTo(xa, ya, xb, yb, x, y);
+                var xa = x + stack.shift(), ya = y + stack.shift();
+                var xb = xa + stack.shift(), yb = ya + stack.shift();
+                x = xb + stack.shift(); y = yb + stack.shift();
+                bezierCurveTo(xa, ya, xb, yb, x, y);
+                stack.pop(); // fd
+                break;
+              case 36: // hflex1
+                var xa = x + stack.shift(), y1 = y + stack.shift();
+                var xb = xa + stack.shift(), y2 = y1 + stack.shift();
+                x = xb + stack.shift();
+                bezierCurveTo(xa, y1, xb, y2, x, y2);
+                var xa = x + stack.shift();
+                var xb = xa + stack.shift(), y3 = y2 + stack.shift();
+                x = xb + stack.shift();
+                bezierCurveTo(xa, y2, xb, y3, x, y);
+                break;
+              case 37: // flex1
+                var x0 = x, y0 = y;
+                var xa = x + stack.shift(), ya = y + stack.shift();
+                var xb = xa + stack.shift(), yb = ya + stack.shift();
+                x = xb + stack.shift(); y = yb + stack.shift();
+                bezierCurveTo(xa, ya, xb, yb, x, y);
+                var xa = x + stack.shift(), ya = y + stack.shift();
+                var xb = xa + stack.shift(), yb = ya + stack.shift();
+                x = xb; y = yb;
+                if (Math.abs(x - x0) > Math.abs(y - y0))
+                  x += stack.shift();
+                else
+                  y += stack.shift();
+                bezierCurveTo(xa, ya, xb, yb, x, y);
+                break;
+              default:
+                error('unknown operator: 12 ' + v);
+            }
+            break;
+          case 14: // endchar
+            if (stack.length >= 4) {
+              var achar = stack.pop();
+              var bchar = stack.pop();
+              y = stack.pop();
+              x = stack.pop();
+              js.push('c.save();');
+              js.push('c.translate('+ x + ',' + y + ');');
+              var gid = lookupCmap(font.cmap, String.fromCharCode(
+                font.glyphNameMap[Encodings.StandardEncoding[achar]]));
+              compileCharString(font.glyphs[gid], js, font);
+              js.push('c.restore();');
+
+              gid = lookupCmap(font.cmap, String.fromCharCode(
+                font.glyphNameMap[Encodings.StandardEncoding[bchar]]));
+              compileCharString(font.glyphs[gid], js, font);
+            }
+            return;
+          case 18: // hstemhm
+            stems += stack.length >> 1;
+            stackClean = true;
+            break;
+          case 19: // hintmask
+            stems += stack.length >> 1;
+            i += (stems + 7) >> 3;
+            stackClean = true;
+            break;
+          case 20: // cntrmask
+            stems += stack.length >> 1;
+            i += (stems + 7) >> 3;
+            stackClean = true;
+            break;
+          case 21: // rmoveto
+            y += stack.pop();
+            x += stack.pop();
+            moveTo(x, y);
+            stackClean = true;
+            break;
+          case 22: // hmoveto
+            x += stack.pop();
+            moveTo(x, y);
+            stackClean = true;
+            break;
+          case 23: // vstemhm
+            stems += stack.length >> 1;
+            stackClean = true;
+            break;
+          case 24: // rcurveline
+            while (stack.length > 2) {
+              var xa = x + stack.shift(), ya = y + stack.shift();
+              var xb = xa + stack.shift(), yb = ya + stack.shift();
+              x = xb + stack.shift(); y = yb + stack.shift();
+              bezierCurveTo(xa, ya, xb, yb, x, y);
+            }
+            x += stack.shift();
+            y += stack.shift();
+            lineTo(x, y);
+            break;
+          case 25: // rlinecurve
+            while (stack.length > 6) {
+              x += stack.shift();
+              y += stack.shift();
+              lineTo(x, y);
+            }
+            var xa = x + stack.shift(), ya = y + stack.shift();
+            var xb = xa + stack.shift(), yb = ya + stack.shift();
+            x = xb + stack.shift(); y = yb + stack.shift();
+            bezierCurveTo(xa, ya, xb, yb, x, y);
+            break;
+          case 26: // vvcurveto
+            if (stack.length % 2) {
+              x += stack.shift();
+            }
+            while (stack.length > 0) {
+              var xa = x, ya = y + stack.shift();
+              var xb = xa + stack.shift(), yb = ya + stack.shift();
+              x = xb; y = yb + stack.shift();
+              bezierCurveTo(xa, ya, xb, yb, x, y);
+            }
+            break;
+          case 27: // hhcurveto
+            if (stack.length % 2) {
+              y += stack.shift();
+            }
+            while (stack.length > 0) {
+              var xa = x + stack.shift(), ya = y;
+              var xb = xa + stack.shift(), yb = ya + stack.shift();
+              x = xb + stack.shift(); y = yb;
+              bezierCurveTo(xa, ya, xb, yb, x, y);
+            }
+            break;
+          case 28:
+            stack.push(((code[i] << 24) | (code[i + 1] << 16)) >> 16);
+            i += 2;
+            break;
+          case 29: // callgsubr
+            var n = stack.pop() + font.gsubrsBias;
+            var subrCode = font.gsubrs[n];
+            if (subrCode) {
+              parse(subrCode);
+            }
+            break;
+          case 30: // vhcurveto
+            while (stack.length > 0) {
+              var xa = x, ya = y + stack.shift();
+              var xb = xa + stack.shift(), yb = ya + stack.shift();
+              x = xb + stack.shift();
+              y = yb + (stack.length === 1 ? stack.shift() : 0);
+              bezierCurveTo(xa, ya, xb, yb, x, y);
+              if (stack.length === 0) {
+                break;
+              }
+
+              var xa = x + stack.shift(), ya = y;
+              var xb = xa + stack.shift(), yb = ya + stack.shift();
+              y = yb + stack.shift();
+              x = xb + (stack.length === 1 ? stack.shift() : 0);
+              bezierCurveTo(xa, ya, xb, yb, x, y);
+            }
+            break;
+          case 31: // hvcurveto
+            while (stack.length > 0) {
+              var xa = x + stack.shift(), ya = y;
+              var xb = xa + stack.shift(), yb = ya + stack.shift();
+              y = yb + stack.shift();
+              x = xb + (stack.length === 1 ? stack.shift() : 0);
+              bezierCurveTo(xa, ya, xb, yb, x, y);
+              if (stack.length === 0) {
+                break;
+              }
+
+              var xa = x, ya = y + stack.shift();
+              var xb = xa + stack.shift(), yb = ya + stack.shift();
+              x = xb + stack.shift();
+              y = yb + (stack.length === 1 ? stack.shift() : 0);
+              bezierCurveTo(xa, ya, xb, yb, x, y);
+            }
+            break;
+          default:
+            if (v < 32)
+              error('unknown operator: ' + v);
+            if (v < 247)
+              stack.push(v - 139);
+            else if (v < 251)
+              stack.push((v - 247) * 256 + code[i++] + 108);
+            else if (v < 255)
+              stack.push(-(v - 251) * 256 - code[i++] - 108);
+            else {
+              stack.push(((code[i] << 24) | (code[i + 1] << 16) |
+                         (code[i + 2] << 8) | code[i + 3]) / 65536);
+              i += 4;
+            }
+            break;
+        }
+        if (stackClean) {
+          stack.length = 0;
+        }
+      }
+    }
+    parse(code);
+  }
+
+  function TrueTypeCompiled(glyphs, cmap, fontMatrix) {
+    this.glyphs = glyphs;
+    this.cmap = cmap;
+    this.fontMatrix = fontMatrix || [0.000488, 0, 0, 0.000488, 0, 0];
+
+    this.compiledGlyphs = [];
+  }
+
+  var noop = function () {};
+
+  TrueTypeCompiled.prototype = {
+    getPathGenerator: function (unicode) {
+      var gid = lookupCmap(this.cmap, unicode);
+      var fn = this.compiledGlyphs[gid];
+      if (!fn) {
+        this.compiledGlyphs[gid] = fn = this.compileGlyph(this.glyphs[gid]);
+      }
+      return fn;
+    },
+    compileGlyph: function (code) {
+      if (!code || code.length === 0 || code[0] === 14) {
+        return noop;
+      }
+
+      var js = [];
+      js.push('c.save();');
+      js.push('c.transform(' + this.fontMatrix.join(',') + ');');
+      js.push('c.scale(size, -size);');
+
+      var stack = [], x = 0, y = 0;
+      compileGlyf(code, js, this);
+
+      js.push('c.restore();');
+
+      /*jshint -W054 */
+      return new Function('c', 'size', js.join('\n'));
+    }
+  };
+
+  function Type2Compiled(cffInfo, cmap, fontMatrix, glyphNameMap) {
+    this.glyphs = cffInfo.glyphs;
+    this.gsubrs = cffInfo.gsubrs || [];
+    this.subrs = cffInfo.subrs || [];
+    this.cmap = cmap;
+    this.glyphNameMap = glyphNameMap || GlyphsUnicode;
+    this.fontMatrix = fontMatrix || [0.001, 0, 0, 0.001, 0, 0];
+
+    this.compiledGlyphs = [];
+    this.gsubrsBias = this.gsubrs.length < 1240 ? 107 :
+                      this.gsubrs.length < 33900 ? 1131 : 32768;
+    this.subrsBias = this.subrs.length < 1240 ? 107 :
+                     this.subrs.length < 33900 ? 1131 : 32768;
+  }
+
+  Type2Compiled.prototype = {
+    getPathGenerator: function (unicode) {
+      var gid = lookupCmap(this.cmap, unicode);
+      var fn = this.compiledGlyphs[gid];
+      if (!fn) {
+        this.compiledGlyphs[gid] = fn = this.compileGlyph(this.glyphs[gid]);
+      }
+      return fn;
+    },
+    compileGlyph: function (code) {
+      if (!code || code.length === 0 || code[0] === 14) {
+        return noop;
+      }
+
+      var js = [];
+      js.push('c.save();');
+      js.push('c.transform(' + this.fontMatrix.join(',') + ');');
+      js.push('c.scale(size, -size);');
+
+      var stack = [], x = 0, y = 0;
+      compileCharString(code, js, this);
+
+      js.push('c.restore();');
+
+      /*jshint -W054 */
+      return new Function('c', 'size', js.join('\n'));
+    }
+  };
+
+  return {
+    create: function FontRendererFactory_create(font) {
+      var data = new Uint8Array(font.data);
+      var cmap, glyf, loca, cff, indexToLocFormat, unitsPerEm;
+      var numTables = getUshort(data, 4);
+      for (var i = 0, p = 12; i < numTables; i++, p += 16) {
+        var tag = String.fromCharCode.apply(null, data.subarray(p, p + 4));
+        var offset = getLong(data, p + 8);
+        var length = getLong(data, p + 12);
+        switch (tag) {
+          case 'cmap':
+            cmap = parseCmap(data, offset, offset + length);
+            break;
+          case 'glyf':
+            glyf = data.subarray(offset, offset + length);
+            break;
+          case 'loca':
+            loca = data.subarray(offset, offset + length);
+            break;
+          case 'head':
+            unitsPerEm = getUshort(data, offset + 18);
+            indexToLocFormat = getUshort(data, offset + 50);
+            break;
+          case 'CFF ':
+            cff = parseCff(data, offset, offset + length);
+            break;
+        }
+      }
+
+      if (glyf) {
+        var fontMatrix = !unitsPerEm ? font.fontMatrix :
+          [1 / unitsPerEm, 0, 0, 1 / unitsPerEm, 0, 0];
+        return new TrueTypeCompiled(
+          parseGlyfTable(glyf, loca, indexToLocFormat), cmap, fontMatrix);
+      } else {
+        return new Type2Compiled(cff, cmap, font.fontMatrix, font.glyphNameMap);
+      }
+    }
+  };
+})();
+
 
 
 var GlyphsUnicode = {
@@ -32250,7 +33173,7 @@ var Parser = (function ParserClosure() {
       if (cipherTransform)
         imageStream = cipherTransform.createStream(imageStream);
       imageStream = this.filter(imageStream, dict, length);
-      imageStream.parameters = dict;
+      imageStream.dict = dict;
 
       this.buf2 = Cmd.get('EI');
       this.shift();
@@ -32286,7 +33209,7 @@ var Parser = (function ParserClosure() {
       if (cipherTransform)
         stream = cipherTransform.createStream(stream);
       stream = this.filter(stream, dict, length);
-      stream.parameters = dict;
+      stream.dict = dict;
       return stream;
     },
     filter: function Parser_filter(stream, dict, length) {
@@ -33190,7 +34113,7 @@ var Stream = (function StreamClosure() {
     this.start = start || 0;
     this.pos = this.start;
     this.end = (start + length) || this.bytes.length;
-    this.parameters = this.dict = dict;
+    this.dict = dict;
   }
 
   // required methods for a stream. if a particular stream does not
@@ -35678,12 +36601,20 @@ var WorkerMessageHandler = {
       var source = data.source;
       var disableRange = data.disableRange;
       if (source.data) {
-        pdfManager = new LocalPdfManager(source.data, source.password);
-        pdfManagerPromise.resolve();
+        try {
+          pdfManager = new LocalPdfManager(source.data, source.password);
+          pdfManagerPromise.resolve();
+        } catch (ex) {
+          pdfManagerPromise.reject(ex);
+        }
         return pdfManagerPromise;
       } else if (source.chunkedViewerLoading) {
-        pdfManager = new NetworkPdfManager(source, handler);
-        pdfManagerPromise.resolve();
+        try {
+          pdfManager = new NetworkPdfManager(source, handler);
+          pdfManagerPromise.resolve();
+        } catch (ex) {
+          pdfManagerPromise.reject(ex);
+        }
         return pdfManagerPromise;
       }
 
@@ -35720,14 +36651,22 @@ var WorkerMessageHandler = {
           networkManager.abortRequest(fullRequestXhrId);
 
           source.length = length;
-          pdfManager = new NetworkPdfManager(source, handler);
-          pdfManagerPromise.resolve(pdfManager);
+          try {
+            pdfManager = new NetworkPdfManager(source, handler);
+            pdfManagerPromise.resolve(pdfManager);
+          } catch (ex) {
+            pdfManagerPromise.reject(ex);
+          }
         },
 
         onDone: function onDone(args) {
           // the data is array, instantiating directly from it
-          pdfManager = new LocalPdfManager(args.chunk, source.password);
-          pdfManagerPromise.resolve();
+          try {
+            pdfManager = new LocalPdfManager(args.chunk, source.password);
+            pdfManagerPromise.resolve();
+          } catch (ex) {
+            pdfManagerPromise.reject(ex);
+          }
         },
 
         onError: function onError(status) {
@@ -35827,8 +36766,8 @@ var WorkerMessageHandler = {
           pdfManager.onLoadedStream().then(function() {
             loadDocument(true).then(onSuccess, onFailure);
           });
-        });
-      });
+        }, onFailure);
+      }, onFailure);
     });
 
     handler.on('GetPageRequest', function wphSetupGetPage(data) {
