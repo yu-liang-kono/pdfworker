@@ -2,6 +2,7 @@
 
 # standard library imports
 from contextlib import closing
+import os
 import os.path
 import sys
 
@@ -22,9 +23,16 @@ def main(argv):
         print 'usage: python %s PDF-File' % (argv[0])
         exit(1)
 
+    try:
+        os.mkdir('output')
+    except OSError, e:
+        pass
+
     pdf_doc = PDFDocument(argv[1])
     for ix, p in enumerate(PDFPage.create_by_xpdf(argv[1])):
         pdf_doc.add_page(ix, p)
+        with closing(open(os.path.join('output', '%03d.json' % (ix + 1)), 'wb')) as f:
+            f.write(p.serialize())
 
     with closing(open('output.json', 'wb')) as f:
         f.write(pdf_doc.serialize())

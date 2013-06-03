@@ -18,7 +18,10 @@ sys.path.insert(
 # third party related imports
 
 # local library imports
+from hcluster.Point import Point
+from hcluster.Rectangle import Rectangle
 from PDFBrowser import PDFBrowser
+from PDFPage import PDFPage
 
 
 def create_argument_parser():
@@ -83,6 +86,32 @@ def output_page_json(page, dirname):
         f.write(page.serialize())
 
 
+def cross_validate(page, pdf_filename=None):
+
+    bbox_pages = PDFPage.create_by_xpdf(pdf_filename, (page.page_num,))
+    bbox_page = bbox_pages[0]
+    scale_x = 1.0 * page.width / bbox_page.width
+    scale_y = 1.0 * page.height / bbox_page.height
+    bbox_page.scale(scale_x, scale_y)
+
+    cross_validate_results = [[]] * len(page.data)
+    for i, text_box1 in enumerate(page.data):
+        rect1 = Rectangle(text_box1['x'], text_box1['y'],
+                          text_box1['w'], text_box1['h'])
+        for j, text_box2 in enumerate(bbox_page.data):
+            rect2 = Rectangle(text_box2['x'], text_box2['y'],
+                              text_box2['w'], text_box2['h'])
+
+            offset = 0
+            for v1, v2 in zip(rect1.vertices, rect2.vertices):
+                offset += v1.square_dist(v2) ** 0.5
+
+            if offset < 100:
+                print 'box1[%s](%s) to box2[%s](%s) = %s' % (i, text_box1['t'],
+                                                             j, text_box2['t'],
+                                                             offset)
+
+
 def main():
 
     arg_parser = create_argument_parser()
@@ -95,15 +124,16 @@ def main():
 
     # set up dumping page json directory
     page_dir = arg_dict['pagedir']
-    page_cb = lambda x: x
-    if page_dir is not None:
-        dirname = os.path.abspath(page_dir.decode('utf8'))
-        if not os.path.exists(dirname):
-            os.mkdir(dirname)
-        page_cb = lambda x: output_page_json(x, dirname=dirname)
+    #page_cb = lambda x: x
+    #if page_dir is not None:
+    #    dirname = os.path.abspath(page_dir.decode('utf8'))
+    #    if not os.path.exists(dirname):
+    #        os.mkdir(dirname)
+    #    page_cb = lambda x: output_page_json(x, dirname=dirname)
 
     pdf_filename = arg_dict['PDF-file'].decode('utf8')
     pdf_browser = PDFBrowser(pdf_filename, arg_dict['browser'])
+    page_cb = lambda x: cross_validate(x, pdf_filename)
     pdf_doc = pdf_browser.run(pages=pages, scale=arg_dict['scale'],
                               page_rendered_cb=page_cb)
 
