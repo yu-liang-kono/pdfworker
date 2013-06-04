@@ -3,6 +3,7 @@ from sikuli import *
 
 # standard library imports
 from fnmatch import fnmatch
+import getpass
 import os
 import os.path
 import re
@@ -222,24 +223,58 @@ def get_num_pages(abs_filename):
     return 0
 
 
+def _kill_adobe_acrobat():
+    """Kill current user's all AdobeAcrobat processes."""
+
+    username = getpass.getuser()
+
+    try:
+        p1 = subprocess.Popen(['ps', 'auxww'], stdout=subprocess.PIPE)
+        p2 = subprocess.Popen(['grep', username],
+                              stdin=p1.stdout, stdout=subprocess.PIPE)
+        p3 = subprocess.Popen(['grep', 'AdobeAcrobat'],
+                              stdin=p2.stdout, stdout=subprocess.PIPE)
+        p4 = subprocess.Popen(['grep', '-v', 'grep'],
+                              stdin=p3.stdout, stdout=subprocess.PIPE)
+        print p4.communicate()
+        p5 = subprocess.Popen(['awk', "{print $2}"],
+                              stdin=p4.stdout, stdout=subprocess.PIPE)
+        print p5.communicate()
+        p6 = subprocess.Popen(['xargs', 'kill'],
+                              stdin=p5.stdout, stdout=subprocess.PIPE)
+    except OSError, e:
+        print unicode(e)
+        raise Exception(e)
+    
+    
 def open_pdf(abs_filename, timeout=10):
     """Open a pdf file by Adobe Acrobat X Pro application and wait until done."""
 
-    try:
-        p = subprocess.Popen(
-                ('open', '-a', 'Adobe Acrobat Pro', abs_filename),
-                stdout=subprocess.PIPE
-            )
-        wait("1369712063644.png", timeout)
-    except OSError, e:
-        print unicode(e)
-        raise PDFUtilError('Error: open -a "Adobe Acrobat Pro" %s' % abs_filename) 
-    except FindFailed, e:
-        out, err = p.communicate()
-        print out
-        print err
-        print unicode(e)
-        raise PDFUtilError('Error: open %s timeout' % abs_filename)
+    counter = 0
+    MAX_TRY = 10
+
+    while counter < MAX_TRY:
+        try:
+            p = subprocess.Popen(
+                    ('open', '-a', 'Adobe Acrobat Pro', abs_filename),
+                    stdout=subprocess.PIPE
+                )
+            wait("1369712063644.png", timeout)
+            _kill_adobe_acrobat()
+            return
+        except OSError, e:
+            print unicode(e)
+            print 'Error: open -a "Adobe Acrobat Pro" %s' % abs_filename
+        except FindFailed, e:
+            out, err = p.communicate()
+            print out
+            print err
+            print unicode(e)
+            print 'Error: open %s timeout' % abs_filename        
+
+        counter += 1
+
+    raise PDFUtilError('Error: open -a "Adobe Acrobat Pro" %s' % abs_filename)
 
 
 def close_pdfs():
@@ -250,7 +285,7 @@ def close_pdfs():
         type('w', KeyModifier.CMD)
         wait(1)
         
-    #app.close()
+    app.close()
 
     
 def split(abs_filename, abs_output_dir):
@@ -259,6 +294,7 @@ def split(abs_filename, abs_output_dir):
     TIMEOUT = 5
     
     open_pdf(abs_filename)
+    return
 
     # jump to the end of pages
     end_btn = find("1369712063644.png")
@@ -323,6 +359,8 @@ def convert_vti(abs_src, abs_output_dir):
 def convert_tiff(abs_src, abs_output_dir):
     """Save pdf background as tiff."""
 
+    shutil.copyfile(abs_src, abs_src + '.backup')
+    
     open_pdf(abs_src)
 
     layer_btn = _init_layer_view()
@@ -391,9 +429,11 @@ def convert_tiff(abs_src, abs_output_dir):
         quit_dlg = find(Pattern("1369815983577.png").targetOffset(-110,25))
         click(quit_dlg)
     except FindFailed:
-        raise PDFUtilExit('cannot find confirm dialog')
+        raise PDFUtilError('cannot find confirm dialog')
         
     close_pdfs()
+
+    shutil.move(abs_src + '.backup', abs_src)
 
 
 def _configure_tiff_setting():
@@ -479,12 +519,12 @@ def merge_to_single_pdf(abs_src_dir, abs_output_dir, output_name):
 
     # open merge dialog
     _move_mouse_top()
-    acrobat_pattern = find(ACROBAT_STATUS_BAR)
-    file_pattern = acrobat_pattern.nearby(150).find("1369971661059.png")
+    acrobat_pattern = _find_acrobat_pattern()
+    file_pattern = _find_in_acrobat_status_bar(acrobat_pattern, FILE_STATUS_BAR)
     click(file_pattern)
-    create_pattern = file_pattern.nearby(100).find("1369982849617.png")
+    create_pattern = file_pattern.nearby(20).below(75).find("1369982849617.png")
     hover(create_pattern)
-    click(create_pattern.nearby(400).find("1369824125882.png"))
+    click(create_pattern.above(20).right(225).below(300).right(225).find("1369824125882.png"))
 
     # start to merge
     new_file_pattern = wait("1369824184003.png", 5)
@@ -516,14 +556,11 @@ def convert_text(abs_src, abs_output_dir):
     layer_btn = _init_layer_view()
 
     layer_btn_region = layer_btn.nearby(200)
-    _debug_region(layer_btn_region, 'xd')
     for x in layer_btn_region.findAll("1369984163231.png"):
         click(x)
 
-    return
     try:
-        # TODO minimize search region
-        click(Pattern("1369984261725.png").targetOffset(-25,0))
+        click(layer_btn_region.find(Pattern("1369984261725.png").targetOffset(-25,0)))
     except FindFailed, e:
         print unicode(e)
 
@@ -563,15 +600,16 @@ def export_by_preview(abs_src):
 
     _move_mouse_top()
     preview_pattern = find("1369988792216.png")
-    file_pattern = preview_pattern.nearby(150).find("1369971661059.png")
+    file_pattern = preview_pattern.nearby(10).right(150).find("1369971661059.png")
     click(file_pattern)
-    export_label = file_pattern.nearby(250).find("1369988906981.png")
+    export_label = file_pattern.nearby(30).below(200).find("1369988906981.png")
     click(export_label)
-    click("1369989934724.png")
+    wait("1370315766831.png")
+    type(Key.ENTER)
 
     try:
         alert_dlg = find("1369989046644.png")
-        click(alert_dlg.nearby(50).right().find("1369989268815.png"))
+        click(alert_dlg.below(50).right(350).find("1369989268815.png"))
     except FindFailed, e:
         pass
 
@@ -595,8 +633,8 @@ def merge_text_and_back(abs_text_pdf, abs_back_pdf, abs_output_pdf):
               (abs_text_pdf, abs_back_pdf, abs_output_pdf)
         print unicode(e)
 
-    while not os.path.exists(abs_output_pdf):
-        wait(1)
+    _wait_until_exist(abs_output_pdf)
+    wait(1)
 
 
 def optimize(abs_src, output_name):

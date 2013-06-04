@@ -17,14 +17,13 @@ import pdfutil
 reload(pdfutil)
 
 # intermediate result directories
-DIR_PAGE = os.path.join(cwd, 'page_643e7daec8e111e2875300254bc4dbd2')
-DIR_SRGB = os.path.join(cwd, 'srgb_bc85c170c8e311e2b3d400254bc4dbd2')
-DIR_VTI = os.path.join(cwd, 'vti_0df3c90fc8e611e2bd9000254bc4dbd2')
-DIR_TIFF = os.path.join(cwd, 'tiff_440f7ff0c9bb11e2b0db00254bc4dbd2')
-DIR_BACK = os.path.join(cwd, 'back_fd579c4fc9bf11e2a64100254bc4dbd2')
-DIR_TEXT = os.path.join(cwd, 'text_ea7e07f0c9c311e2ad8100254bc4dbd2')
-DIR_FINAL = os.path.join('final')
-#FILE_CLIPBOARD = 'clipboard'
+DIR_PAGE = os.path.join(cwd, 'page_%s' % uuid.uuid1().hex)
+DIR_SRGB = os.path.join(cwd, 'srgb_%s' % uuid.uuid1().hex)
+DIR_VTI = os.path.join(cwd, 'vti_%s' % uuid.uuid1().hex)
+DIR_TIFF = os.path.join(cwd, 'tiff_%s' % uuid.uuid1().hex)
+DIR_BACK = os.path.join(cwd, 'back_%s' % uuid.uuid1().hex)
+DIR_TEXT = os.path.join(cwd, 'text_%s' % uuid.uuid1().hex)
+DIR_FINAL = os.path.join(cwd, 'final')
 
 
 def get_all_pdfs():
@@ -36,7 +35,8 @@ def get_all_pdfs():
 def create_intermediate_files():
     """Create directories for intermediate files."""
 
-    dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT)
+    dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF,
+            DIR_BACK, DIR_TEXT, DIR_FINAL)
     
     for dir in dirs:
         try:
@@ -48,10 +48,14 @@ def create_intermediate_files():
 def cleanup_intermediate_files():
     """Clean up directories for intermediate files."""
 
-    for dir in (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT):
-        shutil.rmtree(os.path.join(cwd, dir))
+    dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT)
+    map(lambda dir: shutil.rmtree(os.path.join(cwd, dir)) , dirs)
 
-    
+
+def do_single_file_preprocess(pdf_file):
+    """Apply single file preprocessing."""
+
+
 def do_preprocess(pdf_files):
     """Main loop for each pdf file."""
 
@@ -62,9 +66,11 @@ def do_preprocess(pdf_files):
         create_intermediate_files()
         
         # 1) split a pdf file, a page a pdf
-        #num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
-        num_pages = 12
+        num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
+        return
+
         for i in xrange(1, num_pages + 1):
+
             file = '%04d.pdf' % i
             page_pdf = os.path.join(DIR_PAGE, file)
        
@@ -75,31 +81,38 @@ def do_preprocess(pdf_files):
             vti_pdf = os.path.join(DIR_VTI, file)
 
             pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
-            #return
-
             pdfutil.convert_text(vti_pdf, DIR_TEXT)
-            return
-        return         
-        #pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')
+
+        # merge background pdf files
+        pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')
+        background_pdf = os.path.join(DIR_BACK, 'back.pdf')
+
+        # merge foreground pdf files
         output_text_pdf = '%s_text' % base
-        #pdfutil.merge_to_single_pdf(DIR_TEXT, DIR_TEXT, output_text_pdf)
-        output_background_pdf = os.path.join(DIR_BACK, 'back.pdf')
-        output_text_pdf = os.path.join(DIR_TEXT, output_text_pdf + '.pdf')
-        #pdfutil.export_by_preview(output_text_pdf)
+        pdfutil.merge_to_single_pdf(DIR_TEXT, DIR_TEXT, output_text_pdf)
+        foreground_pdf = os.path.join(DIR_TEXT, output_text_pdf + '.pdf')
+        pdfutil.export_by_preview(foreground_pdf)
+
+        # merge background and foreground
         merged_pdf = os.path.join(cwd, '%s_merge.pdf' % base)
-        pdfutil.merge_text_and_back(output_text_pdf, output_background_pdf,
-                                    merged_pdf)
+        pdfutil.merge_text_and_back(foreground_pdf, background_pdf, merged_pdf)
 
         final_pdf = '%s_final' % base
         pdfutil.optimize(merged_pdf, final_pdf)
-        os.unlink(merged_pdf)        
-    
-        #cleanup_intermediate_files()
+        final_pdf = os.path.join(cwd, final_pdf + '.pdf')
+
+        # aggregate what we want
+        for f in (foreground_pdf, final_pdf):
+            shutil.move(f, DIR_FINAL)
+            
+        # clean up unused
+        os.unlink(merged_pdf) 
+        cleanup_intermediate_files()
+        
 
 def main():
 
     pdf_files = get_all_pdfs()
-    #create_intermediate_files(pdf_files)
     do_preprocess(pdf_files)
 
        
