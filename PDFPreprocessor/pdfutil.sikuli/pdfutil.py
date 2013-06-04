@@ -236,10 +236,8 @@ def _kill_adobe_acrobat():
                               stdin=p2.stdout, stdout=subprocess.PIPE)
         p4 = subprocess.Popen(['grep', '-v', 'grep'],
                               stdin=p3.stdout, stdout=subprocess.PIPE)
-        print p4.communicate()
         p5 = subprocess.Popen(['awk', "{print $2}"],
                               stdin=p4.stdout, stdout=subprocess.PIPE)
-        print p5.communicate()
         p6 = subprocess.Popen(['xargs', 'kill'],
                               stdin=p5.stdout, stdout=subprocess.PIPE)
     except OSError, e:
@@ -260,7 +258,6 @@ def open_pdf(abs_filename, timeout=10):
                     stdout=subprocess.PIPE
                 )
             wait("1369712063644.png", timeout)
-            _kill_adobe_acrobat()
             return
         except OSError, e:
             print unicode(e)
@@ -273,6 +270,7 @@ def open_pdf(abs_filename, timeout=10):
             print 'Error: open %s timeout' % abs_filename        
 
         counter += 1
+        _kill_adobe_acrobat()
 
     raise PDFUtilError('Error: open -a "Adobe Acrobat Pro" %s' % abs_filename)
 
@@ -294,7 +292,6 @@ def split(abs_filename, abs_output_dir):
     TIMEOUT = 5
     
     open_pdf(abs_filename)
-    return
 
     # jump to the end of pages
     end_btn = find("1369712063644.png")

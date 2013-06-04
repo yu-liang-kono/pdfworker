@@ -67,7 +67,6 @@ def do_preprocess(pdf_files):
         
         # 1) split a pdf file, a page a pdf
         num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
-        return
 
         for i in xrange(1, num_pages + 1):
 
