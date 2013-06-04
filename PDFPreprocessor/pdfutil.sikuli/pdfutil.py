@@ -245,7 +245,7 @@ def _kill_adobe_acrobat():
         raise Exception(e)
     
     
-def open_pdf(abs_filename, timeout=10):
+def open_pdf(abs_filename, timeout=5):
     """Open a pdf file by Adobe Acrobat X Pro application and wait until done."""
 
     counter = 0
@@ -285,7 +285,7 @@ def close_pdfs():
         
     app.close()
 
-    
+
 def split(abs_filename, abs_output_dir):
     """Split the specified pdf into multiple pdf per page."""
 
@@ -353,8 +353,30 @@ def convert_vti(abs_src, abs_output_dir):
     close_pdfs()
 
 
-def convert_tiff(abs_src, abs_output_dir):
+def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=10):
     """Save pdf background as tiff."""
+
+    basename = os.path.basename(abs_src)
+    base, ext = os.path.splitext(basename)
+    expected_output = os.path.join(abs_output_dir, '%s.tiff' % base)
+
+    while try_counter < MAX_TRY:
+        try:
+            _convert_tiff_impl(abs_src, abs_output_dir)
+            return
+        except PDFUtilError, e:
+            if os.path.exists(expected_output):
+                os.unlink(expected_output)
+                
+        counter += 1
+        _kill_adobe_acrobat()
+
+    raise PDFUtilError('Error: convert_tiff(%s, %s)' % \
+                       (abs_src, abs_output_dir))
+
+
+def _convert_tiff_impl(abs_src, abs_output_dir):
+    """The implementation of the task saving pdf background as tiff."""
 
     shutil.copyfile(abs_src, abs_src + '.backup')
     
@@ -421,7 +443,7 @@ def convert_tiff(abs_src, abs_output_dir):
 
     # quit
     type('w', KeyModifier.CMD)
-    wait(0.25)
+    wait(0.5)
     try:
         quit_dlg = find(Pattern("1369815983577.png").targetOffset(-110,25))
         click(quit_dlg)
