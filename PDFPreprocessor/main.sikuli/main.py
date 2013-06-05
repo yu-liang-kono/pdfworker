@@ -58,7 +58,7 @@ def do_single_file_preprocess(pdf_file):
 
 def do_preprocess(pdf_files):
     """Main loop for each pdf file."""
-
+    
     for pdf_file in pdf_files:
 
         base, ext = os.path.splitext(pdf_file)
@@ -79,9 +79,7 @@ def do_preprocess(pdf_files):
             vti_pdf = os.path.join(DIR_VTI, file)
 
             pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
-            #pdfutil.convert_text(vti_pdf, DIR_TEXT)
-
-        return
+            pdfutil.convert_text(vti_pdf, DIR_TEXT)
 
         # merge background pdf files
         pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')

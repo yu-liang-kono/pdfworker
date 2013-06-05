@@ -94,29 +94,6 @@ def _debug_region(region, output_file):
     
     f = capture(region)
     shutil.move(f, os.path.expanduser(os.path.join('~', 'Desktop', output_file)))
-    
-                    
-def _create_desktop_tempdir_and_save():
-
-    left_side_bar_header = find("1369734265216.png")
-    
-    try:
-        desktop_label = left_side_bar_header.below().find("1369735187214.png")     
-    except FindFailed:
-        desktop_label = left_side_bar_header.below().find("1369734314261.png")
-    finally:
-        click(desktop_label)
-           
-    # create a temporary directory
-    tempdir = uuid.uuid1().hex
-    click("1369723600085.png")
-    click(Pattern("1369723639913.png").targetOffset(0,27))
-    type('a', KeyModifier.CMD)
-    paste(tempdir)
-    click("1369724048617.png")
-    click("1369724174496.png")
-
-    return tempdir
 
 
 def _get_highlight_text():
@@ -186,10 +163,6 @@ def _init_remove_hidden_info_action():
 
     _wait_until_complete = SimilarityDecorator(_wait_until_complete, 0.9)
     complete_pattern = _wait_until_complete(60 * 5)
-    #default_similarity = Settings.MinSimilarity
-    #Settings.MinSimilarity = 0.9
-    #complete_pattern = wait("1369804581481.png", 60 * 5)
-    #Settings.MinSimilarity = default_similarity
 
     return complete_pattern
 
@@ -206,27 +179,6 @@ def _init_layer_view(timeout=10):
         raise PDFUtilError('cannot find out layer button in left column.')
 
     return layer_btn
-
-
-def get_num_pages(abs_filename):
-    """Get the number of pages in a pdf."""
-
-    try:
-        p = subprocess.Popen(
-                ('pdftk', abs_filename, 'dump_data', 'output'),
-                stdout=subprocess.PIPE
-            )
-    except OSError, e:
-        print unicode(e)
-        return 0
-
-    out, err = p.communicate()
-    for line in out.split('\n'):
-        if 'NumberOfPages' in line:
-            m = re.search(r'\d+', line)
-            return int(line[m.start():m.end()])
-
-    return 0
 
 
 def _kill_adobe_acrobat():
@@ -254,30 +206,23 @@ def _kill_adobe_acrobat():
 def open_pdf(abs_filename, timeout=5):
     """Open a pdf file by Adobe Acrobat X Pro application and wait until done."""
 
-    counter = 0
-    MAX_TRY = 10
+    try:
+        p = subprocess.Popen(
+                ('open', '-a', 'Adobe Acrobat Pro', abs_filename),
+                stdout=subprocess.PIPE
+            )
+        return wait("1369712063644.png", timeout)
+    except OSError, e:
+        print unicode(e)
+        raise RuntimeError('Error: open -a "Adobe Acrobat Pro" %s' % abs_filename)
+    except FindFailed, e:
+        out, err = p.communicate()
+        print out
+        print err
+        print unicode(e)
+        raise RuntimeError('Error: open %s timeout' % abs_filename)
 
-    while counter < MAX_TRY:
-        try:
-            p = subprocess.Popen(
-                    ('open', '-a', 'Adobe Acrobat Pro', abs_filename),
-                    stdout=subprocess.PIPE
-                )
-            return wait("1369712063644.png", timeout)
-        except OSError, e:
-            print unicode(e)
-            print 'Error: open -a "Adobe Acrobat Pro" %s' % abs_filename
-        except FindFailed, e:
-            out, err = p.communicate()
-            print out
-            print err
-            print unicode(e)
-            print 'Error: open %s timeout' % abs_filename        
-
-        counter += 1
-        _kill_adobe_acrobat()
-
-    raise PDFUtilError('Error: open -a "Adobe Acrobat Pro" %s' % abs_filename)
+open_pdf = RobustHandler(open_pdf)
 
 
 def close_pdfs():
@@ -338,62 +283,6 @@ def split_by_filesize(abs_filename, abs_output_dir, max_file_size_mb=10):
     close_pdfs()
     
     return i
-
-    
-def split(abs_filename, abs_output_dir):
-    """Split the specified pdf into multiple pdf per page."""
-
-    TIMEOUT = 5
-    
-    open_pdf(abs_filename)
-
-    # jump to the end of pages
-    end_btn = find("1369712063644.png")
-    click(end_btn)
-    
-    # start extract pages
-    click(end_btn.nearby(50).right().find("1369711747763.png"))
-    extract_dlg = wait("1369993526505.png", TIMEOUT)
-
-    try_counter = 1
-    MAX_TRY = 10
-    while try_counter < MAX_TRY: 
-        click(extract_dlg.getTarget().offset(25, -35))
-        try:
-            num_pages = int(_get_highlight_text())
-            break
-        except ValueError, e:
-            try_counter += 1
-    else:
-        raise PDFUtilError('Can not get number of page')
-    
-    paste('1')
-    click(extract_dlg.getTarget().offset(-8, 12))
-    type(Key.ENTER)
-
-    # save to a directory in desktop directory
-    savefiledlg.wait_dlg_popup(TIMEOUT)
-    savefiledlg.find_target_dir(abs_output_dir)
-    type(Key.ENTER)
-
-    # wait until all pdf are dumped
-    basename = os.path.basename(abs_filename)
-    base, ext = os.path.splitext(basename)
-    last_page_pdf = os.path.join(abs_output_dir,
-                                 '%s %s.pdf' % (base, num_pages))
-    _wait_until_exist(last_page_pdf, wait_second=5)
-
-    # rename all dumped pdf
-    for file in os.listdir(abs_output_dir):
-        if fnmatch(file, '*.pdf'):
-            base, ext = os.path.splitext(file)
-            page = int(base.split(' ')[-1])
-            shutil.move(os.path.join(abs_output_dir, file),
-                        os.path.join(abs_output_dir, '%04d.pdf' % page))
-            
-    close_pdfs()
-    
-    return num_pages
 
 
 def convert_srgb(abs_src, abs_output_dir):
@@ -489,11 +378,12 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
         print unicode(e)
         raise PDFUtilError('cannot find out hidden text label')
 
-    default_similarity = Settings.MinSimilarity
-    Settings.MinSimilarity = 0.9
-    wait("1369804930217.png", 60 * 5)
-    Settings.MinSimilarity = default_similarity
+    def _wait_complete(timeout):
+        wait("1369804930217.png", timeout)
 
+    _wait_complete = SimilarityDecorator(_wait_complete, 0.95)
+    _wait_complete(60 * 5)
+    
     # save as tiff
     _move_mouse_top()
     acrobat_pattern = _find_acrobat_pattern()
@@ -676,12 +566,16 @@ def convert_text(abs_src, abs_output_dir):
         click(remove_btn)
     except FindFailed, e:
         print unicode(e)
-    
-    wait("1369804930217.png", 60)
+
+    def _wait_complete(timeout):
+        return wait("1369804930217.png", timeout)
+
+    _wait_complete = SimilarityDecorator(_wait_complete)
+    _wait_complete(60 * 5)
     wait(1)
 
     type('s', KeyModifier.CMD + KeyModifier.SHIFT)
-    savefiledlg.wait_dlg_popup(5)
+    savefiledlg.wait_dlg_popup()
     savefiledlg.find_target_dir(abs_output_dir)
     type(Key.ENTER)
     
@@ -697,19 +591,24 @@ def export_by_preview(abs_src):
         raise PDFUtilError('cannot open -a Preview %s' % abs_src)
 
     _move_mouse_top()
-    preview_pattern = find("1369988792216.png")
+    preview_pattern = wait("1369988792216.png", 10)
     file_pattern = preview_pattern.nearby(10).right(150).find("1369971661059.png")
     click(file_pattern)
     export_label = file_pattern.nearby(30).below(200).find("1369988906981.png")
     click(export_label)
-    wait("1370315766831.png")
+    
+    save_dlg = wait("1370423175145.png")
+    click(save_dlg.getTarget().offset(40, -15))
+    type('a', KeyModifier.CMD)
+    wait(0.25)
+    temp_name = uuid.uuid1().hex
+    paste(temp_name)
     type(Key.ENTER)
 
-    try:
-        alert_dlg = find("1369989046644.png")
-        click(alert_dlg.below(50).right(350).find("1369989268815.png"))
-    except FindFailed, e:
-        pass
+    output_filename = os.path.join(os.path.dirname(abs_src), temp_name + '.pdf')
+
+    _wait_until_exist(output_filename)
+    shutil.move(output_filename, abs_src)
 
     app = App('Preview')
     while app.window():
@@ -723,17 +622,16 @@ def merge_text_and_back(abs_text_pdf, abs_back_pdf, abs_output_pdf):
     """Merge text pdf and background pdf altogether"""
 
     try:
-        p = subprocess.Popen(['pdftk', abs_text_pdf, 'multibackground',
+        p = subprocess.Popen(['/usr/local/bin/pdftk', abs_text_pdf, 'multibackground',
                               abs_back_pdf, 'output', abs_output_pdf],
                              stdout=subprocess.PIPE)
+        _wait_until_exist(abs_output_pdf)
     except OSError, e:
         print 'Error: pdftk %s multibackground %s output %s' % \
               (abs_text_pdf, abs_back_pdf, abs_output_pdf)
         print unicode(e)
-
-    _wait_until_exist(abs_output_pdf)
-    wait(1)
-
+        raise PDFUtilError()
+    
 
 def optimize(abs_src, output_name):
     """Perform optimization action by Adobe Acrobat Pro application."""
