@@ -20,7 +20,7 @@ class RobustHandler(object):
         self.max_try = max_try
 
         # this is the contract
-        self.expected_outputs = self.expected_outputs or []
+        self.expected_outputs = expected_outputs or []
 
     def __call__(self, *args, **kwargs):
         """The error handler."""
@@ -34,12 +34,14 @@ class RobustHandler(object):
             except Exception, e:
                 lines = traceback.format_exception(*sys.exc_info())
                 print ''.join('!! ' + line for line in lines)
-              
-            lost = self.check_output()
-            if len(lost) == 0:
-                break
-            
-            print ', '.join(lost), 'do not exist. Keep trying'
+
+            if len(self.expected_outputs) > 0:
+                lost = self.check_output()
+                if len(lost) == 0:
+                    break
+                
+                print ', '.join(lost), 'do not exist. Keep trying'
+                
             try_counter += 1
 
         raise RuntimeError('Fail to execute ' + self.func.func_name)
@@ -66,5 +68,7 @@ class SimilarityDecorator(object):
 
         default_similarity = Settings.MinSimilarity
         Settings.MinSimilarity = self.similarity
-        self.func(*args, **kwargs)
+        ret = self.func(*args, **kwargs)
         Settings.MinSimilarity = default_similarity
+
+        return ret

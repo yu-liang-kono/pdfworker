@@ -15,6 +15,9 @@ import uuid
 # third party related imports
 
 # local library imports
+import decorator
+reload(decorator)
+from decorator import RobustHandler, SimilarityDecorator
 import savefiledlg
 reload(savefiledlg)
 
@@ -178,10 +181,15 @@ def _init_remove_hidden_info_action():
     
     click(wait("1369804512050.png", 5))
 
-    default_similarity = Settings.MinSimilarity
-    Settings.MinSimilarity = 0.9
-    complete_pattern = wait("1369804581481.png", 60 * 5)
-    Settings.MinSimilarity = default_similarity
+    def _wait_until_complete(timeout):
+        return wait("1369804581481.png", 60 * 5)
+
+    _wait_until_complete = SimilarityDecorator(_wait_until_complete, 0.9)
+    complete_pattern = _wait_until_complete(60 * 5)
+    #default_similarity = Settings.MinSimilarity
+    #Settings.MinSimilarity = 0.9
+    #complete_pattern = wait("1369804581481.png", 60 * 5)
+    #Settings.MinSimilarity = default_similarity
 
     return complete_pattern
 
@@ -255,8 +263,7 @@ def open_pdf(abs_filename, timeout=5):
                     ('open', '-a', 'Adobe Acrobat Pro', abs_filename),
                     stdout=subprocess.PIPE
                 )
-            wait("1369712063644.png", timeout)
-            return
+            return wait("1369712063644.png", timeout)
         except OSError, e:
             print unicode(e)
             print 'Error: open -a "Adobe Acrobat Pro" %s' % abs_filename
@@ -440,8 +447,18 @@ def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=3):
 def _convert_tiff_impl(abs_src, abs_output_dir):
     """The implementation of the task saving pdf background as tiff."""
     
-    open_pdf(abs_src)
+    end_btn = open_pdf(abs_src)
 
+    # know how many pages this pdf owns
+    def _get_num_page(end_btn):
+        click(end_btn)
+        click(end_btn.getTarget().offset(39, 0))
+        return int(_get_highlight_text())
+
+    _get_num_page = RobustHandler(_get_num_page)
+    num_page = _get_num_page(end_btn) 
+
+    # start to hide layers
     layer_btn = _init_layer_view()
     
     try:
@@ -500,7 +517,7 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
     # wait until tiff saved
     basename = os.path.basename(abs_src)
     base, ext = os.path.splitext(basename)
-    output_tiff = os.path.join(abs_output_dir, '%s.tiff' % base)
+    output_tiff = os.path.join(abs_output_dir, u'%s_頁面_%s.tiff' % (base, num_page))
     _wait_until_exist(output_tiff)
 
     # quit
