@@ -42,7 +42,7 @@ class RobustHandler(object):
             print ', '.join(lost), 'do not exist. Keep trying'
             try_counter += 1
 
-        raise RuntimeError('Fail to execute')
+        raise RuntimeError('Fail to execute ' + self.func.func_name)
 
     def isexist(self, path):
         """The path should exist and file size must be greater than 0."""
