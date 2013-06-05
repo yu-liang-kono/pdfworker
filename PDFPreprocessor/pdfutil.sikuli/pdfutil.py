@@ -15,9 +15,6 @@ import uuid
 # third party related imports
 
 # local library imports
-import decorator
-reload(decorator)
-from decorator import RobustHandler
 import savefiledlg
 reload(savefiledlg)
 
@@ -53,7 +50,7 @@ class ActionWizard(object):
         
         self.action_menu = self.ACTION_MENU_PATTERN[action]
 
-    def do_action(self, abs_output_dir, timeout=60):
+    def do_action(self, abs_output_dir, timeout=60*5):
 
         action_wizard_pattern = self._hover_action_wizard_menu()
         click(self._find_action(action_wizard_pattern))
@@ -62,7 +59,7 @@ class ActionWizard(object):
         savefiledlg.find_target_dir(abs_output_dir)
         type(Key.ENTER)
 
-        wait("1369889558051.png", 10)
+        wait("1369889558051.png", timeout)
         type(Key.ENTER)
 
     def _hover_action_wizard_menu(self):
@@ -183,7 +180,7 @@ def _init_remove_hidden_info_action():
 
     default_similarity = Settings.MinSimilarity
     Settings.MinSimilarity = 0.9
-    complete_pattern = wait("1369804581481.png", 60)
+    complete_pattern = wait("1369804581481.png", 60 * 5)
     Settings.MinSimilarity = default_similarity
 
     return complete_pattern
@@ -287,6 +284,55 @@ def close_pdfs():
     app.close()
 
 
+def split_by_filesize(abs_filename, abs_output_dir, max_file_size_mb=10):
+    """Split the specified pdf into multiple pdf by file size."""
+
+    open_pdf(abs_filename)
+
+    # click split button
+    split_btn = wait("1370405855577.png", 10)
+    click(split_btn)
+
+    # set up split dialog and its option
+    split_dlg = wait("1370405893236.png", 10)
+    split_dlg_target = split_dlg.getTarget()
+    click(split_dlg_target.offset(-48, 7))
+    click(split_dlg_target.offset(37, 35))
+    type('a', KeyModifier.CMD)
+    paste(str(max_file_size_mb))
+    click(split_dlg_target.offset(-28, 98))
+
+    output_option = "1370406250499.png"
+    option_dlg = wait(output_option, 10)
+    click(option_dlg.getTarget().offset(-125, 75))
+    type(Key.ENTER)
+    waitVanish(output_option)
+
+    map(lambda i: type(Key.TAB), xrange(3))
+    type(Key.ENTER)
+
+    # wait for completion at most 10 minutes
+    wait("1370406668130.png", 60 * 10)
+    type(Key.ENTER)
+
+    dirname = os.path.dirname(abs_filename)
+    basename = os.path.basename(abs_filename)
+    base, ext = os.path.splitext(basename)
+    i = 1
+    while True:
+        sub_pdf = os.path.join(dirname, '%s_%s.pdf' % (base, i))
+        if not os.path.exists(sub_pdf):
+            i -= 1
+            break
+
+        shutil.move(sub_pdf, os.path.join(abs_output_dir, '%04d.pdf' % i))
+        i += 1
+
+    close_pdfs()
+    
+    return i
+
+    
 def split(abs_filename, abs_output_dir):
     """Split the specified pdf into multiple pdf per page."""
 
@@ -393,8 +439,6 @@ def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=3):
 
 def _convert_tiff_impl(abs_src, abs_output_dir):
     """The implementation of the task saving pdf background as tiff."""
-
-    shutil.copyfile(abs_src, abs_src + '.backup')
     
     open_pdf(abs_src)
 
@@ -430,7 +474,7 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
 
     default_similarity = Settings.MinSimilarity
     Settings.MinSimilarity = 0.9
-    wait("1369804930217.png", 60)
+    wait("1369804930217.png", 60 * 5)
     Settings.MinSimilarity = default_similarity
 
     # save as tiff
@@ -446,7 +490,7 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
     click(tiff_pattern)
 
     # deal with save file dialog
-    savefiledlg.wait_dlg_popup(5)
+    savefiledlg.wait_dlg_popup()
     tiff_config_region = find("1369805219651.png")
     click(tiff_config_region.getTarget().offset(130, 0))
     _configure_tiff_setting()
@@ -466,11 +510,11 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
     except FindFailed, e:
         if exists("1370352374907.png"):
             type(Key.ENTER)
-            _kill_adobe_acrobat()
+            
+        _kill_adobe_acrobat()
+        return
     
     close_pdfs()
-
-    shutil.move(abs_src + '.backup', abs_src)
 
 
 def _configure_tiff_setting():

@@ -66,9 +66,9 @@ def do_preprocess(pdf_files):
         create_intermediate_files()
         
         # 1) split a pdf file, a page a pdf
-        num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
+        num_parts = pdfutil.split_by_filesize(os.path.join(cwd, pdf_file), DIR_PAGE)
 
-        for i in xrange(89, num_pages + 1):
+        for i in xrange(15, num_parts + 1):
             file = '%04d.pdf' % i
             page_pdf = os.path.join(DIR_PAGE, file)
        
@@ -78,8 +78,10 @@ def do_preprocess(pdf_files):
             pdfutil.convert_vti(srgb_pdf, DIR_VTI)
             vti_pdf = os.path.join(DIR_VTI, file)
 
-            pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
-            pdfutil.convert_text(vti_pdf, DIR_TEXT)
+            #pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
+            #pdfutil.convert_text(vti_pdf, DIR_TEXT)
+
+        return
 
         # merge background pdf files
         pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')
