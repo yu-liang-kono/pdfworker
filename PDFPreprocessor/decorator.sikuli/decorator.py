@@ -53,3 +53,18 @@ class RobustHandler(object):
         """Check expected outputs, and return file that does not exist."""
         
         return filter(lambda f: not self.isexist(f), self.expected_outputs)
+
+
+class SimilarityDecorator(object):
+
+    def __init__(self, func, similarity=Settings.MinSimilarity):
+        
+        self.func = func
+        self.similarity = similarity
+
+    def __call__(self, *args, **kwargs):
+
+        default_similarity = Settings.MinSimilarity
+        Settings.MinSimilarity = self.similarity
+        self.func(*args, **kwargs)
+        Settings.MinSimilarity = default_similarity
