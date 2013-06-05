@@ -69,7 +69,7 @@ class ActionWizard(object):
         
         _move_mouse_top()
         
-        acrobat_pattern = find(ACROBAT_STATUS_BAR)
+        acrobat_pattern = wait(ACROBAT_STATUS_BAR, 10)
         file_pattern = acrobat_pattern.nearby(50).find(FILE_STATUS_BAR)
         click(file_pattern)
         action_wizard_pattern = file_pattern.nearby(50).below(300).find("1369993150771.png")
@@ -179,22 +179,23 @@ def _init_remove_hidden_info_action():
     protection_pattern = tool_pattern.nearby(100).above(15).below(350).right(120).find("1369804425199.png")
     click(protection_pattern)
     
-    target_action = wait("1369804512050.png", 5)
-    click(target_action)
-    
+    click(wait("1369804512050.png", 5))
+
+    default_similarity = Settings.MinSimilarity
+    Settings.MinSimilarity = 0.9
     complete_pattern = wait("1369804581481.png", 60)
-    # wait for all checkboxes appear
-    wait(1)
+    Settings.MinSimilarity = default_similarity
 
     return complete_pattern
 
 
-def _init_layer_view():
+def _init_layer_view(timeout=10):
     """Initialize layer view in left column."""
 
     try:
-        layer_btn = find("1369968652342.png")
+        layer_btn = wait("1369968652342.png", timeout)
         click(layer_btn)
+        wait("1370348233612.png", timeout)
     except FindFailed, e:
         print unicode(e)
         raise PDFUtilError('cannot find out layer button in left column.')
@@ -300,8 +301,19 @@ def split(abs_filename, abs_output_dir):
     # start extract pages
     click(end_btn.nearby(50).right().find("1369711747763.png"))
     extract_dlg = wait("1369993526505.png", TIMEOUT)
-    click(extract_dlg.getTarget().offset(25, -35))
-    num_pages = int(_get_highlight_text()) 
+
+    try_counter = 1
+    MAX_TRY = 10
+    while try_counter < MAX_TRY: 
+        click(extract_dlg.getTarget().offset(25, -35))
+        try:
+            num_pages = int(_get_highlight_text())
+            break
+        except ValueError, e:
+            try_counter += 1
+    else:
+        raise PDFUtilError('Can not get number of page')
+    
     paste('1')
     click(extract_dlg.getTarget().offset(-8, 12))
     type(Key.ENTER)
@@ -353,7 +365,7 @@ def convert_vti(abs_src, abs_output_dir):
     close_pdfs()
 
 
-def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=10):
+def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=3):
     """Save pdf background as tiff."""
 
     basename = os.path.basename(abs_src)
@@ -364,11 +376,15 @@ def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=10):
         try:
             _convert_tiff_impl(abs_src, abs_output_dir)
             return
+        except FindFailed, e:
+            print unicode(e)
         except PDFUtilError, e:
-            if os.path.exists(expected_output):
-                os.unlink(expected_output)
-                
-        counter += 1
+            print unicode(e)
+            
+        if os.path.exists(expected_output):
+            os.unlink(expected_output)
+            
+        try_counter += 1
         _kill_adobe_acrobat()
 
     raise PDFUtilError('Error: convert_tiff(%s, %s)' % \
@@ -411,9 +427,11 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
     except FindFailed, e:
         print unicode(e)
         raise PDFUtilError('cannot find out hidden text label')
-    
+
+    default_similarity = Settings.MinSimilarity
+    Settings.MinSimilarity = 0.9
     wait("1369804930217.png", 60)
-    wait(1)
+    Settings.MinSimilarity = default_similarity
 
     # save as tiff
     _move_mouse_top()
@@ -443,13 +461,13 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
 
     # quit
     type('w', KeyModifier.CMD)
-    wait(0.5)
     try:
-        quit_dlg = find(Pattern("1369815983577.png").targetOffset(-110,25))
-        click(quit_dlg)
-    except FindFailed:
-        raise PDFUtilError('cannot find confirm dialog')
-        
+        click(wait("1369815983577.png", 10).getTarget().offset(-110, 25))
+    except FindFailed, e:
+        if exists("1370352374907.png"):
+            type(Key.ENTER)
+            _kill_adobe_acrobat()
+    
     close_pdfs()
 
     shutil.move(abs_src + '.backup', abs_src)

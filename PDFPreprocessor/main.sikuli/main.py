@@ -68,8 +68,7 @@ def do_preprocess(pdf_files):
         # 1) split a pdf file, a page a pdf
         num_pages = pdfutil.split(os.path.join(cwd, pdf_file), DIR_PAGE)
 
-        for i in xrange(1, num_pages + 1):
-
+        for i in xrange(89, num_pages + 1):
             file = '%04d.pdf' % i
             page_pdf = os.path.join(DIR_PAGE, file)
        
