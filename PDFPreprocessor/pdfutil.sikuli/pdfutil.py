@@ -17,7 +17,7 @@ import uuid
 # local library imports
 import decorator
 reload(decorator)
-from decorator import RobustHandler, SimilarityDecorator
+from decorator import dump_stack, RobustHandler, SimilarityDecorator
 import savefiledlg
 reload(savefiledlg)
 
@@ -202,11 +202,37 @@ def _kill_adobe_acrobat():
         print unicode(e)
         raise Exception(e)
     
-    
-def open_pdf(abs_filename, timeout=5):
-    """Open a pdf file by Adobe Acrobat X Pro application and wait until done."""
 
-    crash_dlg = "1370485638632.png"
+def get_num_page(abs_path):
+    """Get number of page of the specified pdf."""
+
+    prev_p, curr_p = None, None
+    
+    try:
+        for cmd in (('pdfinfo', abs_path),
+                    ('grep', 'Pages'),
+                    ('awk', '{print $2}')):
+            curr_p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                      stdin=getattr(prev_p, 'stdout', None))
+            prev_p = curr_p
+
+        out, err = curr_p.communicate()
+        return int(out)
+    except OSError, e:
+        print unicode(e)
+        dump_stack()
+
+
+def open_pdf(abs_filename, timeout=5):
+    """
+    Open a pdf file by Adobe Acrobat X Pro application and wait until
+    done.
+    Abnormal cases:
+    (1) Inquired whether or not to discard the recovered file.
+
+    """
+
+    recover_dlg = "1370485638632.png"
     
     try:
         p = subprocess.Popen(
@@ -221,11 +247,12 @@ def open_pdf(abs_filename, timeout=5):
         ret = _wait_until_open(timeout)
 
         try:
-            crash_dlg_pattern = wait(crash_dlg, 1)
-            click(crash_dlg_pattern.getTarget().offset(50, 50))
+            recover_dlg_pattern = wait(recover_dlg, 1)
+            click(recover_dlg_pattern.getTarget().offset(50, 50))
         except FindFailed, e:
             pass
-        
+
+        return ret
     except OSError, e:
         _kill_adobe_acrobat()
         print unicode(e)
@@ -330,30 +357,42 @@ def convert_vti(abs_src, abs_output_dir):
     close_pdfs()
 
 
-def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=5):
+def convert_tiff(abs_src, abs_output_dir):
     """Save pdf background as tiff."""
 
     basename = os.path.basename(abs_src)
     base, ext = os.path.splitext(basename)
-    expected_output = os.path.join(abs_output_dir, '%s.tiff' % base)
 
-    while try_counter < MAX_TRY:
-        try:
-            _convert_tiff_impl(abs_src, abs_output_dir)
-            return
-        except FindFailed, e:
-            print unicode(e)
-        except PDFUtilError, e:
-            print unicode(e)
-            
-        if os.path.exists(expected_output):
-            os.unlink(expected_output)
-            
-        try_counter += 1
-        _kill_adobe_acrobat()
+    try:
+        convert_tiff_by_gs(abs_src,
+                           os.path.join(abs_output_dir, '%s.tiff' % base))
+    except PDFUtilError, e:
+        pass
+
+    try:
+        _convert_tiff_impl(abs_src, abs_output_dir)
+        return
+    except FindFailed, e:
+        print unicode(e)
+    except PDFUtilError, e:
+        print unicode(e)
+
+    _kill_adobe_acrobat()
 
     raise PDFUtilError('Error: convert_tiff(%s, %s)' % \
                        (abs_src, abs_output_dir))
+
+
+def _convert_tiff_by_gs(abs_src, abs_output):
+    """Convert pdf to high resolution tiff."""
+
+    try:
+        subprocess.Popen(('gs', '-dNOPAUSE', '-q', '-r600',
+                          '-sDEVICE=tiff24nc', '-dBATCH',
+                          '-sOutputFile=%s' % abs_output, abs_src),
+                         stdout=subprocess.PIPE)
+    except OSError, e:
+        raise PDFUtilError('can not convert by gs')
 
 
 def _convert_tiff_impl(abs_src, abs_output_dir):
@@ -500,6 +539,7 @@ def _configure_tiff_setting():
     Settings.MinSimilarity = default_similarity
     
 
+# deprecate
 def merge_tiff_by_imagemagick(abs_src_dir, num_pages, abs_output_dir):
     """Merge all tiff files to a pdf."""
 
@@ -518,9 +558,12 @@ def merge_tiff_by_imagemagick(abs_src_dir, num_pages, abs_output_dir):
     out, err = p.communicate()
 
 
-def merge_to_single_pdf(abs_src_dir, abs_output_dir, output_name):
+def merge_to_single_pdf(abs_src_dir, abs_output):
     """Merge all tiff files to a pdf."""
-    
+
+    output_dirname, output_filename = os.path.split(abs_output)
+    output_basename, ext = os.path.splitext(output_filename)
+
     try:
         subprocess.Popen(['open', '-a', 'Adobe Acrobat Pro'])
         wait(1)
@@ -552,8 +595,8 @@ def merge_to_single_pdf(abs_src_dir, abs_output_dir, output_name):
     # save file
     type('s', KeyModifier.CMD)
     savefiledlg.wait_dlg_popup(5)
-    savefiledlg.find_target_dir(abs_output_dir)
-    paste(output_name)
+    savefiledlg.find_target_dir(output_dirname)
+    paste(output_basename)
     type(Key.ENTER)
 
     close_pdfs()

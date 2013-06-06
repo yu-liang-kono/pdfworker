@@ -12,6 +12,13 @@ import traceback
 
 # local library imports
 
+def dump_stack():
+    """Print stacktrace info."""
+
+    lines = traceback.format_exception(*sys.exc_info())
+    print ''.join('!! ' + line for line in lines)
+
+    
 class RobustHandler(object):
     """The robust error handler decorator."""
 
@@ -32,15 +39,14 @@ class RobustHandler(object):
             except FindFailed, e:
                 print unicode(e)
             except Exception, e:
-                lines = traceback.format_exception(*sys.exc_info())
-                print ''.join('!! ' + line for line in lines)
+                dump_stack()
 
             if len(self.expected_outputs) > 0:
                 lost = self.check_output()
                 if len(lost) == 0:
                     break
                 
-                print ', '.join(lost), 'do not exist. Keep trying'
+                print ', '.join(lost), 'do not exist. Keep trying...'
                 
             try_counter += 1
 

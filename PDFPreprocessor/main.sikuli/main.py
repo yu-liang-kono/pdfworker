@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # standard library imports
 import fnmatch
 import os
@@ -15,6 +16,9 @@ if cwd not in sys.path:
 # local library imports
 import pdfutil
 reload(pdfutil)
+import decorator
+reload(decorator)
+from decorator import dump_stack, RobustHandler
 
 # intermediate result directories
 DIR_PAGE = None
@@ -50,7 +54,7 @@ def create_intermediate_files(prefix=''):
     
     for dir in dirs:
         try:
-            os.mkdir(os.path.join(cwd, dir))
+            os.mkdir(dir)
         except OSError, e:
             print 'directory (', dir, ') already exists'
 
@@ -58,57 +62,140 @@ def create_intermediate_files(prefix=''):
 def cleanup_intermediate_files():
     """Clean up directories for intermediate files."""
 
+    global DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT
+    
     dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT)
-    map(lambda dir: shutil.rmtree(os.path.join(cwd, dir)) , dirs)
+    map(lambda dir: shutil.rmtree(dir) , dirs)
 
 
+def do_convert_srgb(abs_input_dir, abs_output_dir, num_parts):
+    """Convert color space to sRGB."""
+    
+    for i in xrange(1, num_parts + 1):
+        file = '%04d.pdf' % i
+        page_pdf = os.path.join(abs_input_dir, file)
+
+        expected_outputs = (os.path.join(abs_output_dir, file),)
+        work = RobustHandler(pdfutil.convert_srgb,
+                             expected_outputs=expected_outputs)
+        work(page_pdf, abs_output_dir)
+
+
+def do_convert_vti(abs_input_dir, abs_output_dir, num_parts):
+    """Split vector, text, image, into different layers."""
+
+    for i in xrange(1, num_parts + 1):
+        file = '%04d.pdf' % i
+        srgb_pdf = os.path.join(abs_input_dir, file)
+
+        expected_outputs = (os.path.join(abs_output_dir, file),)
+        work = RobustHandler(pdfutil.convert_vti,
+                             expected_outputs=expected_outputs)
+        work(srgb_pdf, abs_output_dir)
+
+
+def do_convert_text(abs_input_dir, abs_output_dir, num_parts):
+    """Hide other layers except for text layer."""
+
+    for i in xrange(1, num_parts + 1):
+        file = '%04d.pdf' % i
+        vti_pdf = os.path.join(abs_input_dir, file)
+
+        expected_outputs = (os.path.join(abs_output_dir, file),)
+        work = RobustHandler(pdfutil.convert_text,
+                             expected_outputs=expected_outputs)
+        work(vti_pdf, abs_output_dir)
+
+
+def do_create_foreground(abs_input_dir, abs_output):
+    """Merge text pdfs into the foreground pdf."""
+
+    output_dirname, output_filename = os.path.split(abs_output)
+    output_basename, ext = os.path.splitext(output_filename)
+
+    foreground_pdf = os.path.join(abs_input_dir, output_filename)
+    expected_outputs = (foreground_pdf,)
+    work = RobustHandler(pdfutil.merge_to_single_pdf,
+                         expected_outputs=expected_outputs)
+    work(abs_input_dir, foreground_pdf)
+
+    # export by Mac OS X Preview application
+    pdfutil.export_by_preview(foreground_pdf)
+
+    shutil.move(foreground_pdf, output_dirname)
+
+
+def do_convert_tiff(abs_input_dir, abs_output_dir, num_parts):
+    """Hide text layer and flatten to a tiff image."""
+
+    for i in xrange(1, num_parts + 1):
+        file = '%04d.pdf' % i
+        vti_pdf = os.path.join(abs_input_dir, file)
+
+        num_page = pdfutil.get_num_page(vti_pdf)
+        expected_outputs = map(lambda j: u'%04d_頁面_%s.pdf' % (i, j),
+                               xrange(1, num_page + 1))
+        work = RobustHandler(pdfutil.convert_tiff,
+                             expected_outputs=expected_outputs)
+        work(vti_pdf, abs_output_dir)
+
+
+def do_create_background(abs_input_dir, abs_output):
+    """Merge tiff images into the background pdf."""
+
+    work = RobustHandler(pdfutil.merge_to_single_pdf,
+                         expected_outputs=[abs_output])
+    work(abs_input_dir, abs_output)
+
+
+def merge_fg_bg(abs_fg, abs_bg, abs_merged):
+    """Merge foreground and background as output."""
+
+    pdfutil.merge_text_and_back(abs_fg, abs_bg, abs_merged)
+
+
+def do_optimize(abs_input, abs_output):
+    """Optimize the specified pdf by Adobe Acrobat Pro application."""
+
+    global cwd
+
+    output_dirname, output_filename = os.path.split(abs_output)
+    output_basename, ext = os.path.splitext(output_filename)
+
+    pdfutil.optimize(abs_input, output_basename)
+
+    shutil.move(os.path.join(cwd, output_filename), output_dirname)
+
+    
 def do_single_file_preprocess(pdf_file):
     """Apply single file preprocessing."""
+
+    global cwd
 
     base, ext = os.path.splitext(pdf_file)
         
     create_intermediate_files(base)
     
-    # 1) split a pdf file, a page a pdf
     num_parts = pdfutil.split_by_filesize(os.path.join(cwd, pdf_file), DIR_PAGE)
 
-    for i in xrange(1, num_parts + 1):
-        file = '%04d.pdf' % i
-        page_pdf = os.path.join(DIR_PAGE, file)
-   
-        pdfutil.convert_srgb(page_pdf, DIR_SRGB)
-        srgb_pdf = os.path.join(DIR_SRGB, file)
+    do_convert_srgb(DIR_PAGE, DIR_SRGB, num_parts)
+    do_convert_vti(DIR_SRGB, DIR_VTI, num_parts)
+    
+    do_convert_text(DIR_VTI, DIR_TEXT, num_parts)
+    foreground_pdf = os.path.join(DIR_FINAL, '%s_text.pdf' % base)
+    do_create_foreground(DIR_TEXT, foreground_pdf)
 
-        pdfutil.convert_vti(srgb_pdf, DIR_VTI)
-        vti_pdf = os.path.join(DIR_VTI, file)
-
-        pdfutil.convert_tiff(vti_pdf, DIR_TIFF)
-        pdfutil.convert_text(vti_pdf, DIR_TEXT)
-
-    # merge background pdf files
-    pdfutil.merge_to_single_pdf(DIR_TIFF, DIR_BACK, 'back')
+    do_convert_tiff(DIR_VTI, DIR_TIFF, num_parts)
     background_pdf = os.path.join(DIR_BACK, 'back.pdf')
+    do_create_background(DIR_TIFF, background_pdf)
 
-    # merge foreground pdf files
-    output_text_pdf = '%s_text' % base
-    pdfutil.merge_to_single_pdf(DIR_TEXT, DIR_TEXT, output_text_pdf)
-    foreground_pdf = os.path.join(DIR_TEXT, output_text_pdf + '.pdf')
-    pdfutil.export_by_preview(foreground_pdf)
+    merged_pdf = os.path.join(cwd, 'merged.pdf')
+    merge_fg_bg(foreground_pdf, background_pdf, merged_pdf)
 
-    # merge background and foreground
-    merged_pdf = os.path.join(cwd, '%s_merge.pdf' % base)
-    pdfutil.merge_text_and_back(foreground_pdf, background_pdf, merged_pdf)
-
-    final_pdf = '%s_final' % base
-    pdfutil.optimize(merged_pdf, final_pdf)
-    final_pdf = os.path.join(cwd, final_pdf + '.pdf')
-
-    # aggregate what we want
-    for f in (foreground_pdf, final_pdf):
-        shutil.move(f, DIR_FINAL)
-        
-    # clean up unused
-    os.unlink(merged_pdf) 
+    final_pdf = os.path.join(DIR_FINAL, '%s_final.pdf' % base)
+    do_optimize(merged_pdf, final_pdf)
+    
+    os.unlink(merged_pdf)
     cleanup_intermediate_files()
 
 
@@ -119,10 +206,10 @@ def do_preprocess(pdf_files):
         try:
             do_single_file_preprocess(pdf_file)
         except Exception, e:
+            dump_stack()
             print unicode(e)
-            pass
-                
 
+        
 def main():
 
     pdf_files = get_all_pdfs()
