@@ -156,7 +156,7 @@ def _init_remove_hidden_info_action():
     protection_pattern = tool_pattern.nearby(100).above(15).below(350).right(120).find("1369804425199.png")
     click(protection_pattern)
     
-    click(wait("1369804512050.png", 5))
+    click(wait("1369804512050.png", 60))
 
     def _wait_until_complete(timeout):
         return wait("1369804581481.png", 60 * 5)
@@ -167,7 +167,7 @@ def _init_remove_hidden_info_action():
     return complete_pattern
 
 
-def _init_layer_view(timeout=10):
+def _init_layer_view(timeout=30):
     """Initialize layer view in left column."""
 
     try:
@@ -206,23 +206,46 @@ def _kill_adobe_acrobat():
 def open_pdf(abs_filename, timeout=5):
     """Open a pdf file by Adobe Acrobat X Pro application and wait until done."""
 
+    crash_dlg = "1370485638632.png"
+    
     try:
         p = subprocess.Popen(
                 ('open', '-a', 'Adobe Acrobat Pro', abs_filename),
                 stdout=subprocess.PIPE
             )
-        return wait("1369712063644.png", timeout)
+
+        def _wait_until_open(timeout):
+            return wait("1369712063644.png", timeout)
+
+        _wait_until_open = SimilarityDecorator(_wait_until_open, 0.95)
+        ret = _wait_until_open(timeout)
+
+        try:
+            crash_dlg_pattern = wait(crash_dlg, 1)
+            click(crash_dlg_pattern.getTarget().offset(50, 50))
+        except FindFailed, e:
+            pass
+        
     except OSError, e:
+        _kill_adobe_acrobat()
         print unicode(e)
         raise RuntimeError('Error: open -a "Adobe Acrobat Pro" %s' % abs_filename)
     except FindFailed, e:
+        try:
+            crash_dlg_pattern = wait(crash_dlg)
+            click(crash_dlg_pattern.getTarget().offset(50, 50))
+        except FindFailed, e:
+            pass
+        
+        _kill_adobe_acrobat()
+        
         out, err = p.communicate()
         print out
         print err
         print unicode(e)
         raise RuntimeError('Error: open %s timeout' % abs_filename)
 
-open_pdf = RobustHandler(open_pdf)
+open_pdf = RobustHandler(open_pdf, max_try=1)
 
 
 def close_pdfs():
@@ -307,7 +330,7 @@ def convert_vti(abs_src, abs_output_dir):
     close_pdfs()
 
 
-def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=3):
+def convert_tiff(abs_src, abs_output_dir, try_counter=0, MAX_TRY=5):
     """Save pdf background as tiff."""
 
     basename = os.path.basename(abs_src)
@@ -344,7 +367,7 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
         click(end_btn.getTarget().offset(39, 0))
         return int(_get_highlight_text())
 
-    _get_num_page = RobustHandler(_get_num_page)
+    _get_num_page = RobustHandler(_get_num_page, max_try=100)
     num_page = _get_num_page(end_btn) 
 
     # start to hide layers
@@ -570,7 +593,7 @@ def convert_text(abs_src, abs_output_dir):
     def _wait_complete(timeout):
         return wait("1369804930217.png", timeout)
 
-    _wait_complete = SimilarityDecorator(_wait_complete)
+    _wait_complete = SimilarityDecorator(_wait_complete, 0.95)
     _wait_complete(60 * 5)
     wait(1)
 
