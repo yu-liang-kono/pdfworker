@@ -3,6 +3,7 @@
 import fnmatch
 import os
 import os.path
+import re
 import shutil
 import sys
 import uuid
@@ -42,27 +43,19 @@ def create_intermediate_files(prefix=''):
     global cwd
     global DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT, DIR_FINAL
 
-    DIR_PAGE = os.path.join(cwd, '%s_page_%s' % (prefix, uuid.uuid1().hex))
-    DIR_SRGB = os.path.join(cwd, '%s_srgb_%s' % (prefix, uuid.uuid1().hex))
-    DIR_VTI = os.path.join(cwd, '%s_vti_%s' % (prefix, uuid.uuid1().hex))
-    DIR_TIFF = os.path.join(cwd, '%s_tiff_%s' % (prefix, uuid.uuid1().hex))
-    DIR_BACK = os.path.join(cwd, '%s_back_%s' % (prefix, uuid.uuid1().hex))
-    DIR_TEXT = os.path.join(cwd, '%s_text_%s' % (prefix, uuid.uuid1().hex))
-    #DIR_PAGE = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_page_4412fef0cf3811e2ae7b00254bc4dbd2'
-    #DIR_SRGB = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_srgb_44132600cf3811e2b42b00254bc4dbd2'
-    #DIR_VTI = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_vti_44132601cf3811e2af9d00254bc4dbd2'
-    #DIR_TIFF = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_tiff_4413741ecf3811e2966f00254bc4dbd2'
-    #DIR_BACK = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_back_44139b2ecf3811e2b18900254bc4dbd2'
-    #DIR_TEXT = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_text_bd0885e2cf4d11e29d7c00254bc4dbd2'
-    
-    dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF,
-            DIR_BACK, DIR_TEXT, DIR_FINAL)
-    
-    for dir in dirs:
-        try:
-            os.mkdir(dir)
-        except OSError, e:
-            print 'directory (', dir, ') already exists'
+    cwd_files = map(lambda x: x.decode('utf8'), os.listdir(cwd))
+
+    for key in ('PAGE', 'SRGB', 'VTI', 'TIFF', 'BACK', 'TEXT'):
+        pattern = re.compile('%s_%s_[0-9a-f]{32}' % (prefix, key.lower()))
+        matches = filter(lambda f: pattern.match(f), cwd_files)
+        if len(matches) > 0:
+            globals()['DIR_%s' % key] = os.path.join(cwd, matches[0])
+            continue
+
+        new_dir = os.path.join(cwd, '%s_%s_%s' % (prefix, key.lower(),
+                                                  uuid.uuid1().hex))
+        globals()['DIR_%s' % key] = new_dir
+        os.mkdir(new_dir)
 
 
 def cleanup_intermediate_files():
@@ -179,8 +172,14 @@ def do_single_file_preprocess(pdf_file):
     """Apply single file preprocessing."""
 
     global cwd
+    global DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TEXT, DIR_TIFF, DIR_BACK, DIR_FINAL
 
     base, ext = os.path.splitext(pdf_file)
+    final_pdf = os.path.join(DIR_FINAL, '%s_final.pdf' % base)
+
+    if os.path.exists(final_pdf):
+        print final_pdf.encode('utf8'), 'already exists, skip the preprocessing'
+        return
 
     create_intermediate_files(base)
 
@@ -201,7 +200,7 @@ def do_single_file_preprocess(pdf_file):
     merged_pdf = os.path.join(cwd, 'merged.pdf')
     merge_fg_bg(foreground_pdf, background_pdf, merged_pdf)
 
-    final_pdf = os.path.join(DIR_FINAL, '%s_final.pdf' % base)
+
     do_optimize(merged_pdf, final_pdf)
     
     os.unlink(merged_pdf)
