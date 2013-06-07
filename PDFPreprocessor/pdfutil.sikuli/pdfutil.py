@@ -23,7 +23,7 @@ reload(savefiledlg)
 
 # Control the time taken for mouse movement to a target location.
 DEFAULT_MOUSE_DELAY = Settings.MoveMouseDelay
-Settings.MoveMouseDelay = 0.1
+Settings.MoveMouseDelay = 0.2
 
 
 ACROBAT_STATUS_BAR = "1369733764191.png"
@@ -125,11 +125,19 @@ def _move_mouse_top():
     mouseMove(loc)
 
 
-def _wait_until_exist(abs_file, wait_second=1):
+def _wait_until_exist(abs_file, wait_second=1, timeout=600, spy_adobe=True):
     """Wait until a file exists."""
+
+    curr_time = time.time()
 
     while not os.path.exists(abs_file):
         wait(wait_second)
+        if time.time() > curr_time + timeout:
+            raise PDFUtilError('_wait_until_exist timeout')
+
+        if spy_adobe:
+            if not _is_process_alive('AdobeAcrobat'):
+                raise PDFUtilError('AdobeAcrobat is dead')
 
 
 def _find_acrobat_pattern():
@@ -181,27 +189,48 @@ def _init_layer_view(timeout=30):
     return layer_btn
 
 
+def _is_process_alive(process_name):
+    """Detect if a process is still alive?"""
+
+    username = getpass.getuser()
+    curr_p, prev_p = None, None
+
+    try:
+        for cmd in (('ps', 'auxww'), ('grep', username),
+                    ('grep', process_name), ('grep', '-v', 'grep')):
+            curr_p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                      stdin=getattr(prev_p, 'stdout', None))
+            prev_p = curr_p
+    except OSError, e:
+        print unicode(e)
+        raise RuntimeError(e)
+
+    return curr_p.communicate()[0] != ''
+
+
+def _kill_process(process_name):
+    """Kill the specified process."""
+
+    username = getpass.getuser()
+    curr_p, prev_p = None, None
+
+    try:
+        for cmd in (('ps', 'auxww'), ('grep', username),
+                    ('grep', process_name), ('grep', '-v', 'grep'),
+                    ('awk', '{print $2}'), ('xargs', 'kill')):
+            curr_p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                      stdin=getattr(prev_p, 'stdout', None))
+            prev_p = curr_p
+    except OSError, e:
+        print unicode(e)
+        raise RuntimeError(e)
+
+
 def _kill_adobe_acrobat():
     """Kill current user's all AdobeAcrobat processes."""
 
-    username = getpass.getuser()
+    _kill_process('AdobeAcrobat')
 
-    try:
-        p1 = subprocess.Popen(['ps', 'auxww'], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(['grep', username],
-                              stdin=p1.stdout, stdout=subprocess.PIPE)
-        p3 = subprocess.Popen(['grep', 'AdobeAcrobat'],
-                              stdin=p2.stdout, stdout=subprocess.PIPE)
-        p4 = subprocess.Popen(['grep', '-v', 'grep'],
-                              stdin=p3.stdout, stdout=subprocess.PIPE)
-        p5 = subprocess.Popen(['awk', "{print $2}"],
-                              stdin=p4.stdout, stdout=subprocess.PIPE)
-        p6 = subprocess.Popen(['xargs', 'kill'],
-                              stdin=p5.stdout, stdout=subprocess.PIPE)
-    except OSError, e:
-        print unicode(e)
-        raise Exception(e)
-    
 
 def get_num_page(abs_path):
     """Get number of page of the specified pdf."""
@@ -209,7 +238,7 @@ def get_num_page(abs_path):
     prev_p, curr_p = None, None
     
     try:
-        for cmd in (('pdfinfo', abs_path),
+        for cmd in (('/usr/local/bin/pdfinfo', abs_path),
                     ('grep', 'Pages'),
                     ('awk', '{print $2}')):
             curr_p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
@@ -259,8 +288,8 @@ def open_pdf(abs_filename, timeout=5):
         raise RuntimeError('Error: open -a "Adobe Acrobat Pro" %s' % abs_filename)
     except FindFailed, e:
         try:
-            crash_dlg_pattern = wait(crash_dlg)
-            click(crash_dlg_pattern.getTarget().offset(50, 50))
+            recover_dlg_pattern = wait(recover_dlg)
+            click(recover_dlg_pattern.getTarget().offset(50, 50))
         except FindFailed, e:
             pass
         
@@ -364,8 +393,8 @@ def convert_tiff(abs_src, abs_output_dir):
     base, ext = os.path.splitext(basename)
 
     try:
-        convert_tiff_by_gs(abs_src,
-                           os.path.join(abs_output_dir, '%s.tiff' % base))
+        _convert_tiff_by_gs(abs_src, abs_output_dir)
+        return
     except PDFUtilError, e:
         pass
 
@@ -383,35 +412,14 @@ def convert_tiff(abs_src, abs_output_dir):
                        (abs_src, abs_output_dir))
 
 
-def _convert_tiff_by_gs(abs_src, abs_output):
-    """Convert pdf to high resolution tiff."""
+def remove_text_layer(abs_src):
+    """Remove text layer from a pdf."""
 
-    try:
-        subprocess.Popen(('gs', '-dNOPAUSE', '-q', '-r600',
-                          '-sDEVICE=tiff24nc', '-dBATCH',
-                          '-sOutputFile=%s' % abs_output, abs_src),
-                         stdout=subprocess.PIPE)
-    except OSError, e:
-        raise PDFUtilError('can not convert by gs')
-
-
-def _convert_tiff_impl(abs_src, abs_output_dir):
-    """The implementation of the task saving pdf background as tiff."""
-    
-    end_btn = open_pdf(abs_src)
-
-    # know how many pages this pdf owns
-    def _get_num_page(end_btn):
-        click(end_btn)
-        click(end_btn.getTarget().offset(39, 0))
-        return int(_get_highlight_text())
-
-    _get_num_page = RobustHandler(_get_num_page, max_try=100)
-    num_page = _get_num_page(end_btn) 
+    open_pdf(abs_src)
 
     # start to hide layers
     layer_btn = _init_layer_view()
-    
+
     try:
         text_layer_label = layer_btn.nearby(300).find("1369968826594.png")
         click(text_layer_label.getTarget().offset(-25, 0))
@@ -445,6 +453,51 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
 
     _wait_complete = SimilarityDecorator(_wait_complete, 0.95)
     _wait_complete(60 * 5)
+
+    type('s', KeyModifier.CMD)
+    abs_src_dir = os.path.dirname(abs_src)
+    temp_name = uuid.uuid1().hex
+    savefiledlg.wait_dlg_popup()
+    savefiledlg.find_target_dir(abs_src_dir)
+    paste(temp_name)
+    type(Key.ENTER)
+
+    target_file = os.path.join(abs_src_dir, temp_name + '.pdf')
+    _wait_until_exist(target_file)
+    shutil.move(target_file, abs_src)
+
+    close_pdfs()
+
+    
+def _convert_tiff_by_gs(abs_src, abs_output_dir):
+    """Convert pdf to high resolution tiff."""
+
+    base, ext = os.path.splitext(os.path.basename(abs_src))
+    output_name = os.path.join(abs_output_dir, '%s_%%04d.tiff' % base)
+
+    num_page = get_num_page(abs_src)
+
+    try:
+        subprocess.Popen(('/usr/local/bin/gs', '-dNOPAUSE', '-q', '-r600',
+                          '-sCompression=lzw',
+                          '-sDEVICE=tiff24nc', '-dBATCH',
+                          '-sOutputFile=%s' % output_name, abs_src),
+                         stdout=subprocess.PIPE)
+    except OSError, e:
+        raise PDFUtilError('can not convert by gs')
+
+    _wait_until_exist(os.path.join(abs_output_dir,
+                                   '%s_%04d.tiff' % (base, num_page)),
+                      spy_adobe=False)
+
+
+def _convert_tiff_impl(abs_src, abs_output_dir):
+    """The implementation of the task saving pdf background as tiff."""
+    
+    end_btn = open_pdf(abs_src)
+
+    # know how many pages this pdf owns
+    num_page = get_num_page(abs_src) 
     
     # save as tiff
     _move_mouse_top()
@@ -658,12 +711,13 @@ def export_by_preview(abs_src):
 
     _move_mouse_top()
     preview_pattern = wait("1369988792216.png", 10)
-    file_pattern = preview_pattern.nearby(10).right(150).find("1369971661059.png")
+    file_pattern = preview_pattern.nearby(10).right(150).wait("1369971661059.png", 10)
     click(file_pattern)
-    export_label = file_pattern.nearby(30).below(200).find("1369988906981.png")
+
+    export_label = file_pattern.nearby(30).below(200).wait("1369988906981.png", 10)
     click(export_label)
     
-    save_dlg = wait("1370423175145.png")
+    save_dlg = wait("1370423175145.png", 10)
     click(save_dlg.getTarget().offset(40, -15))
     type('a', KeyModifier.CMD)
     wait(0.25)
@@ -673,7 +727,7 @@ def export_by_preview(abs_src):
 
     output_filename = os.path.join(os.path.dirname(abs_src), temp_name + '.pdf')
 
-    _wait_until_exist(output_filename)
+    _wait_until_exist(output_filename, spy_adobe=False)
     shutil.move(output_filename, abs_src)
 
     app = App('Preview')
@@ -691,7 +745,7 @@ def merge_text_and_back(abs_text_pdf, abs_back_pdf, abs_output_pdf):
         p = subprocess.Popen(['/usr/local/bin/pdftk', abs_text_pdf, 'multibackground',
                               abs_back_pdf, 'output', abs_output_pdf],
                              stdout=subprocess.PIPE)
-        _wait_until_exist(abs_output_pdf)
+        _wait_until_exist(abs_output_pdf, spy_adobe=False)
     except OSError, e:
         print 'Error: pdftk %s multibackground %s output %s' % \
               (abs_text_pdf, abs_back_pdf, abs_output_pdf)
@@ -699,7 +753,7 @@ def merge_text_and_back(abs_text_pdf, abs_back_pdf, abs_output_pdf):
         raise PDFUtilError()
     
 
-def optimize(abs_src, output_name):
+def optimize(abs_src, abs_output):
     """Perform optimization action by Adobe Acrobat Pro application."""
 
     open_pdf(abs_src)
@@ -720,11 +774,15 @@ def optimize(abs_src, output_name):
         click(setting_label)
         click(setting_label.nearby(150).find("1369992220358.png"))
 
+    temp_name = uuid.uuid1().hex
     type(Key.ENTER)
-    paste(output_name)
+    wait(0.5)
+    paste(temp_name)
+    wait(0.5)
     type(Key.ENTER)
 
-    output_file = os.path.join(os.path.dirname(abs_src), output_name + '.pdf')
-    _wait_until_exist(output_file)
+    optimized_pdf = os.path.join(os.path.dirname(abs_src), temp_name + '.pdf')    
+    _wait_until_exist(optimized_pdf)
+    shutil.move(optimized_pdf, abs_output)
 
     close_pdfs()

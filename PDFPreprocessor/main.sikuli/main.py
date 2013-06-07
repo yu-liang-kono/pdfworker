@@ -27,7 +27,7 @@ DIR_VTI = None
 DIR_TIFF = None
 DIR_BACK = None
 DIR_TEXT = None
-DIR_FINAL = 'final'
+DIR_FINAL = os.path.join(cwd, 'final')
 
 
 def get_all_pdfs():
@@ -48,6 +48,12 @@ def create_intermediate_files(prefix=''):
     DIR_TIFF = os.path.join(cwd, '%s_tiff_%s' % (prefix, uuid.uuid1().hex))
     DIR_BACK = os.path.join(cwd, '%s_back_%s' % (prefix, uuid.uuid1().hex))
     DIR_TEXT = os.path.join(cwd, '%s_text_%s' % (prefix, uuid.uuid1().hex))
+    #DIR_PAGE = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_page_4412fef0cf3811e2ae7b00254bc4dbd2'
+    #DIR_SRGB = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_srgb_44132600cf3811e2b42b00254bc4dbd2'
+    #DIR_VTI = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_vti_44132601cf3811e2af9d00254bc4dbd2'
+    #DIR_TIFF = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_tiff_4413741ecf3811e2966f00254bc4dbd2'
+    #DIR_BACK = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_back_44139b2ecf3811e2b18900254bc4dbd2'
+    #DIR_TEXT = u'/Users/yuliang/pdfworker/PDFPreprocessor/2013-05MB+bobo_text_bd0885e2cf4d11e29d7c00254bc4dbd2'
     
     dirs = (DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF,
             DIR_BACK, DIR_TEXT, DIR_FINAL)
@@ -120,9 +126,18 @@ def do_create_foreground(abs_input_dir, abs_output):
     work(abs_input_dir, foreground_pdf)
 
     # export by Mac OS X Preview application
-    pdfutil.export_by_preview(foreground_pdf)
+    #work = RobustHandler(pdfutil.export_by_preview)
+    #work(foreground_pdf)
 
-    shutil.move(foreground_pdf, output_dirname)
+    shutil.move(foreground_pdf, abs_output)
+
+
+def do_remove_text(abs_input_dir, num_parts):
+
+    for i in xrange(1, num_parts + 1):
+        file = '%04d.pdf' % i
+        vti_pdf = os.path.join(abs_input_dir, file)
+        pdfutil.remove_text_layer(vti_pdf)
 
 
 def do_convert_tiff(abs_input_dir, abs_output_dir, num_parts):
@@ -157,14 +172,7 @@ def merge_fg_bg(abs_fg, abs_bg, abs_merged):
 def do_optimize(abs_input, abs_output):
     """Optimize the specified pdf by Adobe Acrobat Pro application."""
 
-    global cwd
-
-    output_dirname, output_filename = os.path.split(abs_output)
-    output_basename, ext = os.path.splitext(output_filename)
-
-    pdfutil.optimize(abs_input, output_basename)
-
-    shutil.move(os.path.join(cwd, output_filename), output_dirname)
+    pdfutil.optimize(abs_input, abs_output)
 
     
 def do_single_file_preprocess(pdf_file):
@@ -173,18 +181,19 @@ def do_single_file_preprocess(pdf_file):
     global cwd
 
     base, ext = os.path.splitext(pdf_file)
-        
+
     create_intermediate_files(base)
-    
+
     num_parts = pdfutil.split_by_filesize(os.path.join(cwd, pdf_file), DIR_PAGE)
 
     do_convert_srgb(DIR_PAGE, DIR_SRGB, num_parts)
     do_convert_vti(DIR_SRGB, DIR_VTI, num_parts)
-    
+
     do_convert_text(DIR_VTI, DIR_TEXT, num_parts)
     foreground_pdf = os.path.join(DIR_FINAL, '%s_text.pdf' % base)
     do_create_foreground(DIR_TEXT, foreground_pdf)
 
+    do_remove_text(DIR_VTI, num_parts)
     do_convert_tiff(DIR_VTI, DIR_TIFF, num_parts)
     background_pdf = os.path.join(DIR_BACK, 'back.pdf')
     do_create_background(DIR_TIFF, background_pdf)
