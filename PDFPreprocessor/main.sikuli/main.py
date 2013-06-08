@@ -43,10 +43,12 @@ def create_intermediate_files(prefix=''):
     global cwd
     global DIR_PAGE, DIR_SRGB, DIR_VTI, DIR_TIFF, DIR_BACK, DIR_TEXT, DIR_FINAL
 
-    cwd_files = map(lambda x: x.decode('utf8'), os.listdir(cwd))
+    cwd_files = os.listdir(cwd)
 
     for key in ('PAGE', 'SRGB', 'VTI', 'TIFF', 'BACK', 'TEXT'):
-        pattern = re.compile('%s_%s_[0-9a-f]{32}' % (prefix, key.lower()))
+        escaped_prefix = re.escape(prefix)
+        pattern = re.compile('%s_%s_[0-9a-f]{32}' % (escaped_prefix,
+                                                     key.lower()))
         matches = filter(lambda f: pattern.match(f), cwd_files)
         if len(matches) > 0:
             globals()['DIR_%s' % key] = os.path.join(cwd, matches[0])
@@ -182,6 +184,7 @@ def do_single_file_preprocess(pdf_file):
         return
 
     create_intermediate_files(base)
+    return
 
     num_parts = pdfutil.split_by_filesize(os.path.join(cwd, pdf_file), DIR_PAGE)
 
