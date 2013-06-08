@@ -69,6 +69,17 @@ def cleanup_intermediate_files():
     map(lambda dir: shutil.rmtree(dir) , dirs)
 
 
+def split_pdf(abs_input, abs_output_dir):
+    """Split the specified pdf into multiple parts."""
+
+    outputs = filter(lambda f: fnmatch.fnmatch(f, '*.pdf'),
+                     os.listdir(abs_output_dir))
+    if len(outputs) > 0:
+        return len(outputs)
+
+    return pdfutil.split_by_filesize(abs_input, abs_output_dir)
+
+
 def do_convert_srgb(abs_input_dir, abs_output_dir, num_parts):
     """Convert color space to sRGB."""
     
@@ -184,9 +195,10 @@ def do_single_file_preprocess(pdf_file):
         return
 
     create_intermediate_files(base)
-    return
 
-    num_parts = pdfutil.split_by_filesize(os.path.join(cwd, pdf_file), DIR_PAGE)
+    num_parts = split_pdf(os.path.join(cwd, pdf_file), DIR_PAGE)
+    print num_parts
+    return
 
     do_convert_srgb(DIR_PAGE, DIR_SRGB, num_parts)
     do_convert_vti(DIR_SRGB, DIR_VTI, num_parts)
