@@ -88,6 +88,10 @@ def do_convert_srgb(abs_input_dir, abs_output_dir, num_parts):
         page_pdf = os.path.join(abs_input_dir, file)
 
         expected_outputs = (os.path.join(abs_output_dir, file),)
+        if os.path.exists(expected_outputs[0]):
+            print expected_outputs[0].encode('utf8'), 'already exists'
+            continue
+
         work = RobustHandler(pdfutil.convert_srgb,
                              expected_outputs=expected_outputs)
         work(page_pdf, abs_output_dir)
@@ -101,6 +105,10 @@ def do_convert_vti(abs_input_dir, abs_output_dir, num_parts):
         srgb_pdf = os.path.join(abs_input_dir, file)
 
         expected_outputs = (os.path.join(abs_output_dir, file),)
+        if os.path.exists(expected_outputs[0]):
+            print expected_outputs[0].encode('utf8'), 'already exists'
+            continue
+
         work = RobustHandler(pdfutil.convert_vti,
                              expected_outputs=expected_outputs)
         work(srgb_pdf, abs_output_dir)
@@ -114,6 +122,10 @@ def do_convert_text(abs_input_dir, abs_output_dir, num_parts):
         vti_pdf = os.path.join(abs_input_dir, file)
 
         expected_outputs = (os.path.join(abs_output_dir, file),)
+        if os.path.exists(expected_outputs[0]):
+            print expected_outputs[0].encode('utf8'), 'already exists'
+            continue
+
         work = RobustHandler(pdfutil.convert_text,
                              expected_outputs=expected_outputs)
         work(vti_pdf, abs_output_dir)
@@ -122,28 +134,42 @@ def do_convert_text(abs_input_dir, abs_output_dir, num_parts):
 def do_create_foreground(abs_input_dir, abs_output):
     """Merge text pdfs into the foreground pdf."""
 
-    output_dirname, output_filename = os.path.split(abs_output)
-    output_basename, ext = os.path.splitext(output_filename)
+    expected_outputs = (abs_output,)
+    if os.path.exists(abs_output):
+        print abs_output.encode('utf8'), 'already exists'
+        return
 
-    foreground_pdf = os.path.join(abs_input_dir, output_filename)
-    expected_outputs = (foreground_pdf,)
     work = RobustHandler(pdfutil.merge_to_single_pdf,
                          expected_outputs=expected_outputs)
-    work(abs_input_dir, foreground_pdf)
-
-    # export by Mac OS X Preview application
-    #work = RobustHandler(pdfutil.export_by_preview)
-    #work(foreground_pdf)
-
-    shutil.move(foreground_pdf, abs_output)
+    work(abs_input_dir, abs_output)
 
 
-def do_remove_text(abs_input_dir, num_parts):
+def do_optimize_foreground(abs_input, abs_output):
+    """Optimize foreground pdf."""
+
+    if os.path.exists(abs_output):
+        print abs_output.encode('utf8'), 'already exists'
+        return
+
+    work = RobustHandler(pdfutil.export_by_preview,
+                         expected_outputs=(abs_output,))
+    work(abs_input, abs_output)
+
+
+def do_remove_text(abs_input_dir, abs_output_dir, num_parts):
 
     for i in xrange(1, num_parts + 1):
         file = '%04d.pdf' % i
         vti_pdf = os.path.join(abs_input_dir, file)
-        pdfutil.remove_text_layer(vti_pdf)
+
+        expected_outputs = (os.path.join(abs_output_dir, file),)
+        if os.path.exists(expected_outputs[0]):
+            print expected_outputs[0].encode('utf8'), 'already exists'
+            continue
+
+        work = RobustHandler(pdfutil.remove_text_layer,
+                             expected_outputs=expected_outputs)
+        work(vti_pdf, os.path.join(abs_output_dir, file))
 
 
 def do_convert_tiff(abs_input_dir, abs_output_dir, num_parts):
@@ -151,18 +177,27 @@ def do_convert_tiff(abs_input_dir, abs_output_dir, num_parts):
 
     for i in xrange(1, num_parts + 1):
         file = '%04d.pdf' % i
-        vti_pdf = os.path.join(abs_input_dir, file)
+        back_pdf = os.path.join(abs_input_dir, file)
 
-        num_page = pdfutil.get_num_page(vti_pdf)
-        expected_outputs = map(lambda j: u'%04d_頁面_%s.pdf' % (i, j),
+        num_page = pdfutil.get_num_page(back_pdf)
+        expected_outputs = map(lambda j: os.path.join(abs_output_dir,
+                                                      '%04d_%04d.tiff' % (i, j)),
                                xrange(1, num_page + 1))
+        exist_files = filter(lambda f: os.path.exists(f), expected_outputs)
+        if len(exist_files) == num_page:
+            continue
+        
         work = RobustHandler(pdfutil.convert_tiff,
                              expected_outputs=expected_outputs)
-        work(vti_pdf, abs_output_dir)
+        work(back_pdf, abs_output_dir)
 
 
 def do_create_background(abs_input_dir, abs_output):
     """Merge tiff images into the background pdf."""
+
+    if os.path.exists(abs_output):
+        print abs_output.encode('utf8'), 'already exists'
+        return
 
     work = RobustHandler(pdfutil.merge_to_single_pdf,
                          expected_outputs=[abs_output])
@@ -197,20 +232,21 @@ def do_single_file_preprocess(pdf_file):
     create_intermediate_files(base)
 
     num_parts = split_pdf(os.path.join(cwd, pdf_file), DIR_PAGE)
-    print num_parts
-    return
 
     do_convert_srgb(DIR_PAGE, DIR_SRGB, num_parts)
     do_convert_vti(DIR_SRGB, DIR_VTI, num_parts)
 
     do_convert_text(DIR_VTI, DIR_TEXT, num_parts)
+    pre_optimized_foreground_pdf = os.path.join(DIR_TEXT, '%s_text.pdf' % base)
     foreground_pdf = os.path.join(DIR_FINAL, '%s_text.pdf' % base)
-    do_create_foreground(DIR_TEXT, foreground_pdf)
+    do_create_foreground(DIR_TEXT, pre_optimized_foreground_pdf)
+    do_optimize_foreground(pre_optimized_foreground_pdf, foreground_pdf)
 
-    do_remove_text(DIR_VTI, num_parts)
-    do_convert_tiff(DIR_VTI, DIR_TIFF, num_parts)
+    do_remove_text(DIR_VTI, DIR_BACK, num_parts)
+    do_convert_tiff(DIR_BACK, DIR_TIFF, num_parts)
     background_pdf = os.path.join(DIR_BACK, 'back.pdf')
     do_create_background(DIR_TIFF, background_pdf)
+    return
 
     merged_pdf = os.path.join(cwd, 'merged.pdf')
     merge_fg_bg(foreground_pdf, background_pdf, merged_pdf)
@@ -226,11 +262,11 @@ def do_preprocess(pdf_files):
     """Main loop for each pdf file."""
     
     for pdf_file in pdf_files:
-        try:
-            do_single_file_preprocess(pdf_file)
-        except Exception, e:
-            dump_stack()
-            print unicode(e)
+        #try:
+        do_single_file_preprocess(pdf_file)
+        #except Exception, e:
+        #    dump_stack()
+        #    print unicode(e)
 
         
 def main():

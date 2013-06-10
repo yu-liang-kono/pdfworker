@@ -125,19 +125,29 @@ def _move_mouse_top():
     mouseMove(loc)
 
 
-def _wait_until_exist(abs_file, wait_second=1, timeout=600, spy_adobe=True):
+def _wait_until_exist(abs_file, wait_second=1, timeout=600,
+                      spy_adobe=True, ispdf=True):
     """Wait until a file exists."""
 
     curr_time = time.time()
 
-    while not os.path.exists(abs_file):
-        wait(wait_second)
+    while True:
+        if os.path.exists(abs_file):
+            if ispdf:
+                try:
+                    num_page = get_num_page(abs_file)
+                except:
+                    wait(wait_second)
+            break
+
         if time.time() > curr_time + timeout:
             raise PDFUtilError('_wait_until_exist timeout')
 
         if spy_adobe:
             if not _is_process_alive('AdobeAcrobat'):
                 raise PDFUtilError('AdobeAcrobat is dead')
+
+        wait(wait_second)
 
 
 def _find_acrobat_pattern():
@@ -412,7 +422,7 @@ def convert_tiff(abs_src, abs_output_dir):
                        (abs_src, abs_output_dir))
 
 
-def remove_text_layer(abs_src):
+def remove_text_layer(abs_src, abs_output):
     """Remove text layer from a pdf."""
 
     open_pdf(abs_src)
@@ -464,7 +474,7 @@ def remove_text_layer(abs_src):
 
     target_file = os.path.join(abs_src_dir, temp_name + '.pdf')
     _wait_until_exist(target_file)
-    shutil.move(target_file, abs_src)
+    shutil.move(target_file, abs_output)
 
     close_pdfs()
 
@@ -488,7 +498,7 @@ def _convert_tiff_by_gs(abs_src, abs_output_dir):
 
     _wait_until_exist(os.path.join(abs_output_dir,
                                    '%s_%04d.tiff' % (base, num_page)),
-                      spy_adobe=False)
+                      spy_adobe=False, ispdf=False)
 
 
 def _convert_tiff_impl(abs_src, abs_output_dir):
@@ -523,7 +533,15 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
     basename = os.path.basename(abs_src)
     base, ext = os.path.splitext(basename)
     output_tiff = os.path.join(abs_output_dir, u'%s_頁面_%s.tiff' % (base, num_page))
-    _wait_until_exist(output_tiff)
+    _wait_until_exist(output_tiff, ispdf=False)
+
+    escape_base = re.escape(base)
+    for f in os.listdir(abs_output_dir):
+        if fnmatch(f, u'%s_頁面_*.tiff' % base):
+            m = re.match(u'%s_頁面_(\d+).tiff' % escape_base, f)
+            ix = int(m.group(1))
+            dst = os.path.join(abs_output_dir, '%s_%04d.tiff' % (base, ix))
+            shutil.move(os.path.join(abs_output_dir, f), dst)
 
     # quit
     type('w', KeyModifier.CMD)
@@ -701,7 +719,7 @@ def convert_text(abs_src, abs_output_dir):
     close_pdfs()
 
 
-def export_by_preview(abs_src):
+def export_by_preview(abs_src, abs_output):
     """Export to pdf by Mac OS X Preview application."""
 
     try:
@@ -728,7 +746,7 @@ def export_by_preview(abs_src):
     output_filename = os.path.join(os.path.dirname(abs_src), temp_name + '.pdf')
 
     _wait_until_exist(output_filename, spy_adobe=False)
-    shutil.move(output_filename, abs_src)
+    shutil.move(output_filename, abs_output)
 
     app = App('Preview')
     while app.window():
