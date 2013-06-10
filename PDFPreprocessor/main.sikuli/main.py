@@ -270,7 +270,10 @@ def do_preprocess(pdf_files):
 
         
 def main():
-
+    test = "1370867718890.png"
+    t = find(test).right(80)
+    print t.text()
+    return
     pdf_files = get_all_pdfs()
     do_preprocess(pdf_files)
 

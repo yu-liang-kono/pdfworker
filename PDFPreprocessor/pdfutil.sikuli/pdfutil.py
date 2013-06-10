@@ -500,6 +500,51 @@ def _convert_tiff_by_gs(abs_src, abs_output_dir):
                                    '%s_%04d.tiff' % (base, num_page)),
                       spy_adobe=False, ispdf=False)
 
+    for i in xrange(1, num_page + 1):
+        _ensure_valid_tiff(os.path.join(abs_output_dir,
+                                        '%s_%04d.tiff' % (base, i)),
+                           abs_src)
+
+
+def _ensure_valid_tiff(abs_tiff_src, abs_back):
+    """Ensure the tiff is correct format."""
+
+    try:
+        p = subprocess.check_call(('/usr/local/bin/tiffinfo', '-D',
+                                   abs_tiff_src),
+                                  stdout=subprocess.PIPE)
+        return
+    except subprocess.CalledProcessError, e:
+        print abs_tiff_src, 'is invalid'
+
+    # extract the single page
+    basename = os.path.basename(abs_tiff_src)
+    base, ext = os.path.splitext(basename)
+    part, page = map(int, base.split('_'))
+
+    try:
+        tmp_pdf = os.path.expanduser(
+                    os.path.join('~', '%04d_%04d.pdf' % (part, page))
+                  )
+        p = subprocess.check_call(('/usr/local/bin/pdftk', abs_back,
+                                   'cat', str(page), 'output', tmp_pdf))
+        p = subprocess.check_call(('/usr/local/bin/gs', '-dNOPAUSE', '-q',
+                                   '-r600', '-sCompression=lzw',
+                                   '-sDEVICE=tiff24nc', '-dBATCH',
+                                   '-sOutputFile=%s' % abs_tiff_src,
+                                   tmp_pdf))
+    except subprocess.CalledProcessError, e:
+        raise PDFUtilError(e)
+    finally:
+        os.unlink(tmp_pdf)
+
+    try:
+        p = subprocess.check_call(('/usr/local/bin/tiffinfo', '-D',
+                                  abs_tiff_src))
+    except subprocess.CalledProcessError, e:
+        print 'cannot convert', abs_tiff_src, 'to a valid tiff'
+        raise PDFUtilError(e)
+        
 
 def _convert_tiff_impl(abs_src, abs_output_dir):
     """The implementation of the task saving pdf background as tiff."""
@@ -660,8 +705,17 @@ def merge_to_single_pdf(abs_src_dir, abs_output):
     type(Key.ENTER)
     click("1369827319476.png")
     wait(1)
-    waitVanish("1369828292764.png", FOREVER)
-    wait(1)
+    while True:
+        if exists("1369828292764.png"):
+            wait(10)
+
+            error_dlg = exists("1370845944322.png")
+            if error_dlg is not None:
+                click(error_dlg.getTarget().offset(-70, 0))
+        else:
+            break
+
+    wait("1370846648247.png", 60)
 
     # save file
     type('s', KeyModifier.CMD)
