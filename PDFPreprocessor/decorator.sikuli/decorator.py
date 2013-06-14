@@ -16,7 +16,7 @@ def dump_stack():
     """Print stacktrace info."""
 
     lines = traceback.format_exception(*sys.exc_info())
-    print ''.join('!! ' + line for line in lines)
+    print u''.join('!! ' + line for line in lines)
 
     
 class RobustHandler(object):
@@ -46,7 +46,7 @@ class RobustHandler(object):
                 if len(lost) == 0:
                     break
                 
-                print ', '.join(lost), 'do not exist. Keep trying...'
+                print u', '.join(lost).encode('utf8'), 'do not exist. Keep trying...'
                 
             try_counter += 1
 
