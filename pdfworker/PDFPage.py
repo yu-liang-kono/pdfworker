@@ -152,10 +152,11 @@ class PDFPage(object):
 
                 word_elements = pg.findall('word')
                 for word in word_elements:
-                    min_x = float(word.attrib['xMin'])
-                    max_x = float(word.attrib['xMax'])
-                    min_y = float(word.attrib['yMin'])
-                    max_y = float(word.attrib['yMax'])
+                    word_attr = word.attrib
+                    min_x = float(word_attr.get('xMin') or word_attr['xmin'])
+                    max_x = float(word_attr.get('xMax') or word_attr['xmax'])
+                    min_y = float(word_attr.get('yMin') or word_attr['ymin'])
+                    max_y = float(word_attr.get('yMax') or word_attr['ymax'])
                     page_obj['data'].append({
                         'x': min_x, 'y': min_y, 'sx': 1, 'sy': 1,
                         'w': max_x - min_x, 'h': max_y - min_y,
