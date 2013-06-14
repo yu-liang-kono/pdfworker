@@ -82,7 +82,9 @@ def main():
     page_nums = parse_pages(arg_dict['pages'])
 
     # determine whether or not to dump JSON page by page
-    page_dir = create_folder(arg_dict.get('pagedir', '').decode('utf8'))
+    page_dir = arg_dict['pagedir']
+    if page_dir is not None:
+        page_dir = create_folder(page_dir.decode('utf8'))
 
     # get the input pdf file
     pdf_filename = arg_dict['PDF-file'].decode('utf8')
@@ -97,6 +99,8 @@ def main():
     # main logic
     pdf_doc = PDFDocument(pdf_filename)
     pages = PDFPage.create_by_xpdf(pdf_filename, page_nums)
+    map(lambda (ix, page): pdf_doc.add_page(ix, page), enumerate(pages))
+
     if page_dir is not None:
         for p in pages:
             output_file = os.path.join(page_dir, '%03d.json' % p.page_num)
