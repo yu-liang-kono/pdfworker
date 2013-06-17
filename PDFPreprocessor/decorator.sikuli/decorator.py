@@ -32,6 +32,9 @@ class RobustHandler(object):
     def __call__(self, *args, **kwargs):
         """The error handler."""
 
+        import pdfutil
+        reload(pdfutil)
+        
         try_counter = 0
         while try_counter < self.max_try:
             try:
@@ -47,7 +50,8 @@ class RobustHandler(object):
                     break
                 
                 print u', '.join(lost).encode('utf8'), 'do not exist. Keep trying...'
-                
+
+            pdfutil._kill_adobe_acrobat()
             try_counter += 1
 
         raise RuntimeError('Fail to execute ' + self.func.func_name)
@@ -74,7 +78,12 @@ class SimilarityDecorator(object):
 
         default_similarity = Settings.MinSimilarity
         Settings.MinSimilarity = self.similarity
-        ret = self.func(*args, **kwargs)
-        Settings.MinSimilarity = default_similarity
-
+        try:
+            ret = self.func(*args, **kwargs)
+        except Exception, e:
+            Settings.MinSimilarity = default_similarity
+            raise e
+        finally:
+            Settings.MinSimilarity = default_similarity
+            
         return ret

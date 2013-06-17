@@ -53,14 +53,21 @@ class ActionWizard(object):
         
         self.action_menu = self.ACTION_MENU_PATTERN[action]
 
-    def do_action(self, abs_output_dir, timeout=60*5):
+    def do_action(self, abs_output_dir, timeout=60*8):
 
         action_wizard_pattern = self._hover_action_wizard_menu()
         click(self._find_action(action_wizard_pattern))
         
         savefiledlg.wait_dlg_popup(timeout)
         savefiledlg.find_target_dir(abs_output_dir)
-        type(Key.ENTER)
+        click(savefiledlg.SAVE_BUTTON)
+        #type(Key.ENTER)
+
+        try:
+            waitVanish(savefiledlg.SAVE_BUTTON, 10)
+            print 'savefiledlg.SAVE_BUTTON is vanished'
+        except FindFailed, e:
+            click(savefiledlg.SAVE_BUTTON)
 
         wait("1369889558051.png", timeout)
         type(Key.ENTER)
@@ -69,10 +76,10 @@ class ActionWizard(object):
         
         _move_mouse_top()
         
-        acrobat_pattern = wait(ACROBAT_STATUS_BAR, 10)
-        file_pattern = acrobat_pattern.nearby(50).find(FILE_STATUS_BAR)
+        acrobat_pattern = wait(ACROBAT_STATUS_BAR, 30)
+        file_pattern = acrobat_pattern.nearby(50).wait(FILE_STATUS_BAR, 30)
         click(file_pattern)
-        action_wizard_pattern = file_pattern.nearby(50).below(300).find("1369993150771.png")
+        action_wizard_pattern = file_pattern.nearby(50).below(300).wait("1369993150771.png", 30)
         hover(action_wizard_pattern)
 
         return action_wizard_pattern
@@ -136,9 +143,11 @@ def _wait_until_exist(abs_file, wait_second=1, timeout=600,
             if ispdf:
                 try:
                     num_page = get_num_page(abs_file)
+                    break
                 except:
                     wait(wait_second)
-            break
+            else:
+                break
 
         if time.time() > curr_time + timeout:
             raise PDFUtilError('_wait_until_exist timeout')
@@ -169,12 +178,16 @@ def _init_remove_hidden_info_action():
     acrobat_pattern = _find_acrobat_pattern()
     view_pattern = _find_in_acrobat_status_bar(acrobat_pattern, VIEW_STATUS_BAR)
     click(view_pattern)
-    tool_pattern = view_pattern.nearby(15).below(120).find("1370230693219.png")
+    tool_pattern = view_pattern.nearby(15).below(120).wait("1370230693219.png", 300)
     hover(tool_pattern)
-    protection_pattern = tool_pattern.nearby(100).above(15).below(350).right(120).find("1369804425199.png")
+    protection_pattern = tool_pattern.nearby(100).above(15).below(350).right(120).wait("1369804425199.png", 300)
     click(protection_pattern)
-    
-    click(wait("1369804512050.png", 60))
+
+    def _click_remove_hidden_info(timeout):
+        click(wait("1369804512050.png", timeout))
+
+    _click_remove_hidden_info = SimilarityDecorator(_click_remove_hidden_info, 0.9)
+    _click_remove_hidden_info(60)
 
     def _wait_until_complete(timeout):
         return wait("1369804581481.png", 60 * 5)
@@ -185,18 +198,22 @@ def _init_remove_hidden_info_action():
     return complete_pattern
 
 
-def _init_layer_view(timeout=30):
+def _init_layer_view(timeout=300):
     """Initialize layer view in left column."""
 
+    layer_pattern = "1370348233612.png"
+    layer_btn = "1369968652342.png"
+     
     try:
-        layer_btn = wait("1369968652342.png", timeout)
-        click(layer_btn)
-        wait("1370348233612.png", timeout)
+        btn = wait(layer_btn, timeout)
+        click(btn)
+        wait(layer_pattern, timeout)
     except FindFailed, e:
-        print unicode(e)
-        raise PDFUtilError('cannot find out layer button in left column.')
+        if not exists(layer_pattern):
+            print unicode(e)
+            raise PDFUtilError('cannot find out layer button in left column.')
 
-    return layer_btn
+    return btn
 
 
 def _is_process_alive(process_name):
@@ -217,6 +234,33 @@ def _is_process_alive(process_name):
 
     return curr_p.communicate()[0] != ''
 
+
+def _renice_process(process_name):
+    """Raise process nice value to 0"""
+
+    username = getpass.getuser()
+    curr_p, prev_p = None, None
+
+    try:
+        for cmd in (('ps', 'auxww'), ('grep', username),
+                    ('grep', process_name), ('grep', '-v', 'grep'),
+                    ('awk', '{print $2}')):
+            curr_p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                      stdin=getattr(prev_p, 'stdout', None))
+            prev_p = curr_p
+    except OSError, e:
+        print unicode(e)
+        raise RuntimeError(e)
+
+    pid = curr_p.communicate()[0].strip()
+    if pid == '':
+        return
+
+    try:
+        subprocess.check_call(('renice', '0', '-p', pid))
+    except subprocess.CalledProcessError, e:
+        print unicode(e)
+        
 
 def _kill_process(process_name):
     """Kill the specified process."""
@@ -291,6 +335,8 @@ def open_pdf(abs_filename, timeout=5):
         except FindFailed, e:
             pass
 
+        _renice_process('AdobeAcrobat')
+        
         return ret
     except OSError, e:
         _kill_adobe_acrobat()
@@ -431,12 +477,26 @@ def remove_text_layer(abs_src, abs_output):
     layer_btn = _init_layer_view()
 
     try:
-        text_layer_label = layer_btn.nearby(300).find("1369968826594.png")
+        if layer_btn is not None:
+            text_layer_label = layer_btn.nearby(300).find("1369968826594.png")
+        else:
+            text_layer_label = find("1369968826594.png")
+
         click(text_layer_label.getTarget().offset(-25, 0))
     except FindFailed, e:
         print unicode(e)
-        print 'Maybe this page does not have text layer.'
-        raise PDFUtilError('cannot find out text layer label in left column')
+        
+        try:
+            if layer_btn is not None:
+                text_layer_label = layer_btn.nearby(300).find("1371113947992.png")
+            else:
+                text_layer_label = find("1371113947992.png")
+                
+            click(text_layer_label.getTarget().offset(-25, 0))
+        except FindFailed, e:
+            print unicode(e)
+            print 'Maybe this page does not have text layer.'
+            #raise PDFUtilError('cannot find out text layer label in left column')
 
     # perform protection action
     complete_pattern = _init_remove_hidden_info_action()
@@ -468,13 +528,14 @@ def remove_text_layer(abs_src, abs_output):
     abs_src_dir = os.path.dirname(abs_src)
     temp_name = uuid.uuid1().hex
     savefiledlg.wait_dlg_popup()
-    savefiledlg.find_target_dir(abs_src_dir)
-    paste(temp_name)
-    type(Key.ENTER)
-
-    target_file = os.path.join(abs_src_dir, temp_name + '.pdf')
-    _wait_until_exist(target_file)
-    shutil.move(target_file, abs_output)
+    savefiledlg.find_target_dir(os.path.dirname(abs_output))
+    #paste(temp_name)
+    #type(Key.ENTER)
+    click(savefiledlg.SAVE_BUTTON)
+           
+    #target_file = os.path.join(abs_src_dir, temp_name + '.pdf')
+    _wait_until_exist(abs_output)
+    #shutil.move(target_file, abs_output)
 
     close_pdfs()
 
@@ -488,13 +549,14 @@ def _convert_tiff_by_gs(abs_src, abs_output_dir):
     num_page = get_num_page(abs_src)
 
     try:
-        subprocess.Popen(('/usr/local/bin/gs', '-dNOPAUSE', '-q', '-r600',
-                          '-sCompression=lzw',
-                          '-sDEVICE=tiff24nc', '-dBATCH',
-                          '-sOutputFile=%s' % output_name, abs_src),
-                         stdout=subprocess.PIPE)
-    except OSError, e:
-        raise PDFUtilError('can not convert by gs')
+        subprocess.check_call(('/usr/local/bin/gs', '-dNOPAUSE', '-q', '-r600',
+                              '-sCompression=lzw',
+                              '-sDEVICE=tiff24nc', '-dBATCH', '-dUseCropBox',
+                              '-sOutputFile=%s' % output_name, abs_src),
+                              stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError, e:
+        print 'cannot convert', abs_src.encode('utf8'), 'by gs'
+        raise PDFUtilError('cannot convert by gs')
 
     _wait_until_exist(os.path.join(abs_output_dir,
                                    '%s_%04d.tiff' % (base, num_page)),
@@ -515,7 +577,7 @@ def _ensure_valid_tiff(abs_tiff_src, abs_back):
                                   stdout=subprocess.PIPE)
         return
     except subprocess.CalledProcessError, e:
-        print abs_tiff_src, 'is invalid'
+        print abs_tiff_src.encode('utf8'), 'is invalid'
 
     # extract the single page
     basename = os.path.basename(abs_tiff_src)
@@ -542,7 +604,7 @@ def _ensure_valid_tiff(abs_tiff_src, abs_back):
         p = subprocess.check_call(('/usr/local/bin/tiffinfo', '-D',
                                   abs_tiff_src))
     except subprocess.CalledProcessError, e:
-        print 'cannot convert', abs_tiff_src, 'to a valid tiff'
+        print 'cannot convert', abs_tiff_src.encode('utf8'), 'to a valid tiff'
         raise PDFUtilError(e)
         
 
@@ -572,22 +634,31 @@ def _convert_tiff_impl(abs_src, abs_output_dir):
     click(tiff_config_region.getTarget().offset(130, 0))
     _configure_tiff_setting()
     savefiledlg.find_target_dir(abs_output_dir)
-    type(Key.ENTER)
+    click(savefiledlg.SAVE_BUTTON)
+    #type(Key.ENTER)
     
     # wait until tiff saved
     basename = os.path.basename(abs_src)
     base, ext = os.path.splitext(basename)
-    output_tiff = os.path.join(abs_output_dir, u'%s_頁面_%s.tiff' % (base, num_page))
+    if num_page > 1:
+        output_tiff = os.path.join(abs_output_dir,
+                                   u'%s_頁面_%s.tiff' % (base, num_page))
+    else:
+        output_tiff = os.path.join(abs_output_dir, u'%s.tiff' % base)
     _wait_until_exist(output_tiff, ispdf=False)
 
-    escape_base = re.escape(base)
-    for f in os.listdir(abs_output_dir):
-        if fnmatch(f, u'%s_頁面_*.tiff' % base):
-            m = re.match(u'%s_頁面_(\d+).tiff' % escape_base, f)
-            ix = int(m.group(1))
-            dst = os.path.join(abs_output_dir, '%s_%04d.tiff' % (base, ix))
-            shutil.move(os.path.join(abs_output_dir, f), dst)
-
+    if num_page > 1:
+        escape_base = re.escape(base)
+        for f in os.listdir(abs_output_dir):
+            if fnmatch(f, u'%s_頁面_*.tiff' % base):
+                m = re.match(u'%s_頁面_(\d+).tiff' % escape_base, f)
+                ix = int(m.group(1))
+                dst = os.path.join(abs_output_dir, '%s_%04d.tiff' % (base, ix))
+                shutil.move(os.path.join(abs_output_dir, f), dst)
+    else:
+        shutil.move(os.path.join(abs_output_dir, u'%s.tiff' % base),
+                    os.path.join(abs_output_dir, u'%s_0001.tiff' % base))
+        
     # quit
     type('w', KeyModifier.CMD)
     try:
@@ -674,7 +745,7 @@ def merge_tiff_by_imagemagick(abs_src_dir, num_pages, abs_output_dir):
     out, err = p.communicate()
 
 
-def merge_to_single_pdf(abs_src_dir, abs_output):
+def merge_to_single_pdf(abs_src_dir, abs_output, break_if_error=False):
     """Merge all tiff files to a pdf."""
 
     output_dirname, output_filename = os.path.split(abs_output)
@@ -682,7 +753,7 @@ def merge_to_single_pdf(abs_src_dir, abs_output):
 
     try:
         subprocess.Popen(['open', '-a', 'Adobe Acrobat Pro'])
-        wait(1)
+        wait(3)
     except OSError, e:
         print unicode(e)
         raise PDFUtilError('Error: open Adobe Acrobat Pro')
@@ -702,30 +773,78 @@ def merge_to_single_pdf(abs_src_dir, abs_output):
     click(new_file_pattern.nearby(50).find("1369824203704.png"))
     savefiledlg.wait_dlg_popup(5)
     savefiledlg.find_target_dir(abs_src_dir)
-    type(Key.ENTER)
+    click(savefiledlg.SAVE_BUTTON)
+    #type(Key.ENTER)
+
+    if break_if_error:
+        click("1370945042794.png")
+        check_box = "1370945092861.png"
+        wait(check_box)
+        for cb in findAll(check_box):
+            click(cb)
+
+        option_dlg = find("1370945188645.png").getTarget()
+        click(option_dlg.offset(-100, -30))
+        click(option_dlg.offset(-100, 25))
+        click(option_dlg.offset(60, 50))
+
     click("1369827319476.png")
     wait(1)
+    broken_files = []
     while True:
         if exists("1369828292764.png"):
             wait(10)
 
-            error_dlg = exists("1370845944322.png")
+            if break_if_error:
+                error_dlg = exists("1370945844987.png")
+                if error_dlg is not None:
+                    doubleClick(error_dlg.getTarget().offset(-47, -37))
+                    error_msg = _get_highlight_text()
+                    m = re.search('\d{4}_\d{4}', error_msg)
+                    broken_files.append(m.group(0) + '.tiff')
+                    click(error_dlg.getTarget().offset(54, 38))
+
+            error_dlg = exists("1370950955287.png")
             if error_dlg is not None:
                 click(error_dlg.getTarget().offset(-70, 0))
         else:
             break
 
+    
     wait("1370846648247.png", 60)
 
     # save file
     type('s', KeyModifier.CMD)
-    savefiledlg.wait_dlg_popup(5)
+    savefiledlg.wait_dlg_popup(60)
     savefiledlg.find_target_dir(output_dirname)
     paste(output_basename)
-    type(Key.ENTER)
+    click(savefiledlg.SAVE_BUTTON)
+    #type(Key.ENTER)
+
+    _wait_until_exist(abs_output)
 
     close_pdfs()
 
+    return broken_files
+
+
+def _ocr(region):
+    """Make OCR."""
+
+    try:
+        subprocess.Popen(('/usr/local/bin/tesseract', capture(region),
+                          '/tmp/ocr'))
+    except OSError, e:
+        print unicode(e)
+        return None
+
+    f = open('/tmp/ocr.txt', 'r')
+    ret = f.read()
+    f.close()
+
+    os.unlink('/tmp/ocr.txt')
+    
+    return ret
 
 def convert_text(abs_src, abs_output_dir):
     """Merge to a pdf only containing texts."""
@@ -768,7 +887,8 @@ def convert_text(abs_src, abs_output_dir):
     type('s', KeyModifier.CMD + KeyModifier.SHIFT)
     savefiledlg.wait_dlg_popup()
     savefiledlg.find_target_dir(abs_output_dir)
-    type(Key.ENTER)
+    click(savefiledlg.SAVE_BUTTON)
+    #type(Key.ENTER)
     
     close_pdfs()
 
