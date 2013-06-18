@@ -5,7 +5,9 @@ from sikuli import *
 # third party related imports
 
 # local library imports
-
+import decorator
+reload(decorator)
+from decorator import SimilarityDecorator
 
 SEARCH_BOX = "1369887975076.png"
 GOTO_PATH_LABEL = "1369887520187.png"
@@ -26,9 +28,12 @@ def find_target_dir(dirname):
     """Search for the specified directory name."""
 
     type('g', KeyModifier.CMD + KeyModifier.SHIFT)
-    path_dlg = wait(GOTO_PATH_LABEL)
+    path_dlg = wait(GOTO_PATH_LABEL, 30)
     click(path_dlg.getTarget().offset(0, 20))
     type('a', KeyModifier.CMD)
     paste(dirname)
     type(Key.ENTER)
-    waitVanish(GOTO_PATH_LABEL, 1)
+    waitVanish(GOTO_PATH_LABEL, 30)
+    wait(1)
+
+find_target_dir = SimilarityDecorator(find_target_dir, 0.9)

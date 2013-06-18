@@ -89,7 +89,7 @@ def do_convert_srgb(abs_input_dir, abs_output_dir, num_parts):
 
         expected_outputs = (os.path.join(abs_output_dir, file),)
         if os.path.exists(expected_outputs[0]):
-            print expected_outputs[0].encode('utf8'), 'already exists'
+            #print expected_outputs[0].encode('utf8'), 'already exists'
             continue
 
         work = RobustHandler(pdfutil.convert_srgb,
@@ -106,7 +106,7 @@ def do_convert_vti(abs_input_dir, abs_output_dir, num_parts):
 
         expected_outputs = (os.path.join(abs_output_dir, file),)
         if os.path.exists(expected_outputs[0]):
-            print expected_outputs[0].encode('utf8'), 'already exists'
+            #print expected_outputs[0].encode('utf8'), 'already exists'
             continue
 
         work = RobustHandler(pdfutil.convert_vti,
@@ -123,7 +123,7 @@ def do_convert_text(abs_input_dir, abs_output_dir, num_parts):
 
         expected_outputs = (os.path.join(abs_output_dir, file),)
         if os.path.exists(expected_outputs[0]):
-            print expected_outputs[0].encode('utf8'), 'already exists'
+            #print expected_outputs[0].encode('utf8'), 'already exists'
             continue
 
         work = RobustHandler(pdfutil.convert_text,
@@ -136,7 +136,7 @@ def do_create_foreground(abs_input_dir, abs_output):
 
     expected_outputs = (abs_output,)
     if os.path.exists(abs_output):
-        print abs_output.encode('utf8'), 'already exists'
+        #print abs_output.encode('utf8'), 'already exists'
         return
 
     work = RobustHandler(pdfutil.merge_to_single_pdf,
@@ -148,7 +148,7 @@ def do_optimize_foreground(abs_input, abs_output):
     """Optimize foreground pdf."""
 
     if os.path.exists(abs_output):
-        print abs_output.encode('utf8'), 'already exists'
+        #print abs_output.encode('utf8'), 'already exists'
         return
 
     work = RobustHandler(pdfutil.export_by_preview,
@@ -185,6 +185,7 @@ def do_convert_tiff(abs_input_dir, abs_output_dir, num_parts):
                                xrange(1, num_page + 1))
         exist_files = filter(lambda f: os.path.exists(f), expected_outputs)
         if len(exist_files) == num_page:
+            print exist_files[-1].encode('utf8'), 'already exists'
             continue
         
         work = RobustHandler(pdfutil.convert_tiff,
@@ -197,11 +198,11 @@ def do_create_background(abs_input_dir, abs_output):
 
     if os.path.exists(abs_output):
         print abs_output.encode('utf8'), 'already exists'
-        return
+        return []
 
     work = RobustHandler(pdfutil.merge_to_single_pdf,
                          expected_outputs=[abs_output])
-    work(abs_input_dir, abs_output)
+    return work(abs_input_dir, abs_output, True)
 
 
 def merge_fg_bg(abs_fg, abs_bg, abs_merged):
@@ -244,13 +245,22 @@ def do_single_file_preprocess(pdf_file):
 
     do_remove_text(DIR_VTI, DIR_BACK, num_parts)
     do_convert_tiff(DIR_BACK, DIR_TIFF, num_parts)
-    background_pdf = os.path.join(DIR_BACK, 'back.pdf')
-    do_create_background(DIR_TIFF, background_pdf)
-    return
+    background_pdf = os.path.join(DIR_FINAL, '%s_back.pdf' % base)
+    broken_files = do_create_background(DIR_TIFF, background_pdf)
+    if len(broken_files) != 0:
+        print broken_files
+        tiffs = filter(lambda f: fnmatch.fnmatch(f, '*.tiff'),
+                       os.listdir(DIR_TIFF))
+        tiffs.sort()
+
+        pages = map(lambda bf: tiffs.index(bf) + 1, broken_files)
+        f = open(os.path.join(DIR_FINAL, '%s_error.txt' % base), 'w')
+        f.write('error page: %s' % ', '.join(map(str, pages)))
+        f.close()
+        return
 
     merged_pdf = os.path.join(cwd, 'merged.pdf')
     merge_fg_bg(foreground_pdf, background_pdf, merged_pdf)
-
 
     do_optimize(merged_pdf, final_pdf)
     
@@ -262,18 +272,20 @@ def do_preprocess(pdf_files):
     """Main loop for each pdf file."""
     
     for pdf_file in pdf_files:
-        #try:
-        do_single_file_preprocess(pdf_file)
-        #except Exception, e:
-        #    dump_stack()
-        #    print unicode(e)
+        counter = 0
+        while counter < 5:
+            try:
+                do_single_file_preprocess(pdf_file)
+                break
+            except (FindFailed, pdfutil.PDFUtilError, RuntimeError):
+                dump_stack()
+                pdfutil._kill_process('AdobeAcrobat')
+                pdfutil._kill_process('Preview')
+                
+            counter += 1
 
         
 def main():
-    test = "1370867718890.png"
-    t = find(test).right(80)
-    print t.text()
-    return
     pdf_files = get_all_pdfs()
     do_preprocess(pdf_files)
 
