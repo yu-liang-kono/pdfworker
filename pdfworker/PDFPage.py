@@ -158,7 +158,7 @@ class PDFPage(object):
                     min_y = float(word_attr.get('yMin') or word_attr['ymin'])
                     max_y = float(word_attr.get('yMax') or word_attr['ymax'])
                     page_obj['data'].append({
-                        'x': min_x, 'y': min_y, 'sx': 1, 'sy': 1,
+                        'x': min_x, 'y': min_y,
                         'w': max_x - min_x, 'h': max_y - min_y,
                         't': word.text,
                     })
@@ -184,7 +184,7 @@ class PDFPage(object):
                 )
                 data = _parse_bbox_html(base + '.html')
                 pdf_page = PDFPage.create_by_json(deserialized=data[0])
-                pdf_page.page = p
+                pdf_page.page_num = p
                 ret.append(pdf_page)
 
         os.unlink(base + '.html')
