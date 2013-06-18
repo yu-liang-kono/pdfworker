@@ -167,6 +167,13 @@ class PDFPage(object):
 
             return pages
 
+        def _fit_crop_box(data, media_box, crop_box):
+
+            data['width'] = crop_box[2] - crop_box[0]
+            data['height'] = crop_box[3] - crop_box[1]
+            for txt_obj in data['data']:
+                txt_obj['x'] -= crop_box[0]
+                txt_obj['y'] -= crop_box[1]
 
         ret = []
 
@@ -175,7 +182,10 @@ class PDFPage(object):
         if pages is None:
             subprocess.check_call(('pdftotext', '-bbox', filename))
             data = _parse_bbox_html(base + '.html')
-            for page_data in data:
+            for ix, page_data in enumerate(data):
+                box_dict = cls.get_page_box(filename, ix + 1,
+                                            media=True, crop=True)
+                _fit_crop_box(page_data, box_dict['media'], box_dict['crop'])
                 ret.append(PDFPage.create_by_json(deserialized=page_data))
         else:
             for p in pages:
@@ -183,11 +193,46 @@ class PDFPage(object):
                     ('pdftotext', '-f', str(p), '-l', str(p), '-bbox', filename)
                 )
                 data = _parse_bbox_html(base + '.html')
+                box_dict = cls.get_page_box(filename, p,
+                                            media=True, crop=True)
+                _fit_crop_box(data[0], box_dict['media'], box_dict['crop'])
                 pdf_page = PDFPage.create_by_json(deserialized=data[0])
                 pdf_page.page_num = p
                 ret.append(pdf_page)
 
         os.unlink(base + '.html')
+
+        return ret
+
+    @classmethod
+    def get_page_box(cls, filename, page_num,
+                     media=True, crop=False, bleed=False,
+                     trim=False, art=False):
+        """
+        Get media box, crop box, bleed box, trim box, art box
+        information of the specified PDF page.
+
+        """
+
+        ret = {}
+
+        pdf_info = subprocess.check_output(('pdfinfo', '-box',
+                                            '-f', str(page_num),
+                                            '-l', str(page_num),
+                                            filename))
+        for line in pdf_info.split('\n'):
+            line = filter(lambda x: x != '', line.split(' '))
+
+            if media and 'MediaBox:' in line:
+                ret['media'] = map(float, line[3:7])
+            if crop and 'CropBox:' in line:
+                ret['crop'] = map(float, line[3:7])
+            if bleed and 'BleedBox:' in line:
+                ret['bleed'] = map(float, line[3:7])
+            if trim and 'TrimBox:' in line:
+                ret['trim'] = map(float, line[3:7])
+            if art and 'ArtBox:' in line:
+                ret['art'] = map(float, line[3:7])
 
         return ret
 
