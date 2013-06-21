@@ -48,7 +48,7 @@ def parse_pages(user_input):
 
     for p in pages:
         if p.isdigit():
-            ret.append(int(p) - 1)
+            ret.append(int(p))
             continue
 
         match_obj = re.match(r'(\d+)\-(\d+)', p)
@@ -99,7 +99,8 @@ def main():
     # main logic
     pdf_doc = PDFDocument(pdf_filename)
     pages = PDFPage.create_by_xpdf(pdf_filename, page_nums)
-    map(lambda (ix, page): pdf_doc.add_page(ix, page), enumerate(pages))
+    map(lambda (ix, page): pdf_doc.add_page(page.page_num, page),
+        enumerate(pages))
 
     if page_dir is not None:
         for p in pages:
