@@ -259,6 +259,9 @@ def do_single_file_preprocess(pdf_file):
         f.close()
         return
 
+    if os.path.exists(os.path.join(DIR_FINAL, '%s_error.txt' % base)):
+        return
+
     merged_pdf = os.path.join(cwd, 'merged.pdf')
     merge_fg_bg(foreground_pdf, background_pdf, merged_pdf)
 

@@ -363,11 +363,17 @@ open_pdf = RobustHandler(open_pdf, max_try=1)
 def close_pdfs():
     """Close all opened pdf."""
 
+    t1 = time.time()
+    
     app = App('Adobe Acrobat Pro')
     while app.window():
         type('w', KeyModifier.CMD)
         wait(1)
-        
+
+        if time.time() - t1 > 10:
+            _kill_adobe_acrobat()
+            return
+
     app.close()
 
 
@@ -398,8 +404,8 @@ def split_by_filesize(abs_filename, abs_output_dir, max_file_size_mb=10):
     map(lambda i: type(Key.TAB), xrange(3))
     type(Key.ENTER)
 
-    # wait for completion at most 10 minutes
-    wait("1370406668130.png", 60 * 10)
+    # wait for completion at most 30 minutes
+    wait("1370406668130.png", 60 * 30)
     type(Key.ENTER)
 
     dirname = os.path.dirname(abs_filename)
@@ -468,6 +474,7 @@ def convert_tiff(abs_src, abs_output_dir):
                        (abs_src, abs_output_dir))
 
 
+
 def remove_text_layer(abs_src, abs_output):
     """Remove text layer from a pdf."""
 
@@ -476,28 +483,32 @@ def remove_text_layer(abs_src, abs_output):
     # start to hide layers
     layer_btn = _init_layer_view()
 
-    try:
-        if layer_btn is not None:
-            text_layer_label = layer_btn.nearby(300).find("1369968826594.png")
-        else:
-            text_layer_label = find("1369968826594.png")
-
-        click(text_layer_label.getTarget().offset(-25, 0))
-    except FindFailed, e:
-        print unicode(e)
-        
+    def _hide_text(layer_btn):
         try:
             if layer_btn is not None:
-                text_layer_label = layer_btn.nearby(300).find("1371113947992.png")
+                text_layer_label = layer_btn.nearby(300).find("1369968826594.png")
             else:
-                text_layer_label = find("1371113947992.png")
-                
+                text_layer_label = find("1369968826594.png")
+    
             click(text_layer_label.getTarget().offset(-25, 0))
         except FindFailed, e:
             print unicode(e)
-            print 'Maybe this page does not have text layer.'
-            #raise PDFUtilError('cannot find out text layer label in left column')
+            
+            try:
+                if layer_btn is not None:
+                    text_layer_label = layer_btn.nearby(300).find("1371113947992.png")
+                else:
+                    text_layer_label = find("1371113947992.png")
+                    
+                click(text_layer_label.getTarget().offset(-25, 0))
+            except FindFailed, e:
+                print unicode(e)
+                print 'Maybe this page does not have text layer.'
+                #raise PDFUtilError('cannot find out text layer label in left column')
 
+    _hide_text = SimilarityDecorator(_hide_text, 0.8)
+    _hide_text(layer_btn)
+    
     # perform protection action
     complete_pattern = _init_remove_hidden_info_action()
 
@@ -505,13 +516,28 @@ def remove_text_layer(abs_src, abs_output):
     map(lambda x: click(x), complete_pattern.below().findAll("1369808493670.png"))
            
     # check what we want
+    click_remove_btn = False
+    
     try:
         hidden_text_label = complete_pattern.below().find("1369804767828.png")
         click(hidden_text_label.getTarget().offset(-30, 0))
+        click_remove_btn = True
+    except FindFailed, e:
+        print unicode(e)
 
-        hidden_layer_label = hidden_text_label.nearby(150).find("1369804828198.png")
+    try:
+        hidden_layer_label = complete_pattern.below().find("1369804828198.png")
         click(hidden_layer_label.getTarget().offset(-30, 0))
+        click_remove_btn = True
+    except FindFailed, e:
+        print unicode(e)
 
+    if not click_remove_btn:
+        shutil.copy(abs_src, abs_output)
+        close_pdfs()
+        return
+    
+    try:
         remove_btn = complete_pattern.below(150).find("1369804889386.png")
         click(remove_btn)
     except FindFailed, e:
@@ -526,7 +552,7 @@ def remove_text_layer(abs_src, abs_output):
 
     type('s', KeyModifier.CMD)
     abs_src_dir = os.path.dirname(abs_src)
-    temp_name = uuid.uuid1().hex
+    #temp_name = uuid.uuid1().hex
     savefiledlg.wait_dlg_popup()
     savefiledlg.find_target_dir(os.path.dirname(abs_output))
     #paste(temp_name)
@@ -536,7 +562,7 @@ def remove_text_layer(abs_src, abs_output):
     #target_file = os.path.join(abs_src_dir, temp_name + '.pdf')
     _wait_until_exist(abs_output)
     #shutil.move(target_file, abs_output)
-
+    
     close_pdfs()
 
     
