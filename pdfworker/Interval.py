@@ -15,6 +15,10 @@ class Interval(object):
         self.begin = begin
         self.end = end
 
+    def __repr__(self):
+
+        return 'Interval<%s, %s>' % (self.begin, self.end)
+
     def intersect(self, other):
 
         return self & other
@@ -50,6 +54,10 @@ class Interval(object):
     def length(self):
 
         return self.end - self.begin
+
+    def __eq__(self, other):
+
+        return self.begin == other.begin and self.end == other.end
 
 
 class IntervalList(object):
@@ -97,10 +105,10 @@ class IntervalList(object):
             counter += 1 if endpoints[ix][1] == 0 else -1
 
             if counter == 0:
-                interval.end = endpoints[ix]
+                interval.end = endpoints[ix][0]
                 self.intervals.append(interval)
-            elif counter == 1:
-                interval.begin = endpoints[ix][0]
+                if ix + 1 < len(endpoints):
+                    interval = Interval(endpoints[ix + 1][0], None)
 
     @property
     def gaps(self):
