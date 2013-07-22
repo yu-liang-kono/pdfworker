@@ -5,7 +5,8 @@
 # third party related imports
 
 # local library imports
-
+from ..Rectangle import Rectangle, TextRectangle
+from Interval import Interval, IntervalList
 
 ROW = 0
 COLUMN = 1
@@ -15,10 +16,10 @@ Y = 1
 
 class Cut(Rectangle):
 
-    def __init__(self):
+    def __init__(self, cut_rect=None, cut_direction=None):
 
-        self.cut_rect = None
-        self.cut_direction = None
+        self.cut_rect = cut_rect
+        self.cut_direction = cut_direction
 
     def isxcut(self):
 
@@ -28,51 +29,67 @@ class Cut(Rectangle):
 
         return self.cut_direction == Y
 
+    @property
+    def direction(self):
+
+        return self.cut_direction
+
 
 class BaseXYNode(object):
 
-    def __init__(self, reading_order):
+    def __init__(self):
 
         self.children = []
-        self.reading_order = reading_order
         self.cut = None
-
-    def visit(self):
-
-        return True
-
-    def traverse(self):
-
-        if self.isleaf():
-            self.visit()
-            return
-
-        if  (self.reading_order == ROW and self.cut.isxcut()) or \
-            (self.reading_order == COLUMN and self.cut.isycut()):
-            map(lambda child: child.traverse(), self.children)
-        else:
-            map(lambda child: child.traverse(), reverse(self.children))
+        self.bboxes = []
 
 
-def build_xy_tree(bboxes, reading_order):
+def build_xy_tree(bboxes, root=None):
 
-    root = XYNode(init_orientation)
-    xy_cut(root, world, bboxes, reading_order)
-    return root
+    if root is None:
+        root = BaseXYNode()
 
-def xy_cut(root, bboxes, cut_direction):
+    x_intervals = IntervalList(*map(lambda b: Interval(b.x, b.x + b.width),
+                                    bboxes))
+    y_intervals = IntervalList(*map(lambda b: Interval(b.y, b.y + b.height),
+                                    bboxes))
 
-    if cut_direction == X:
-        x_cut(root, bboxes)
-    else:
-        y_cut(root, bboxes)
+    x_gaps, y_gaps = x_intervals.gaps, y_intervlas.gaps
+    world_bbox = Rectangle(x_intervals[0].begin, y_intervals[0].begin,
+                           x_intervals[-1].end - x_intervals[0].begin,
+                           y_intervals[-1].end - y_intervlas[0].begin)
 
-def x_cut(root, bboxes):
+    max_valley_size = 0
+    max_valley = None
+    max_valley_direction = None
+    for direction, gaps in {X: x_gaps, Y: y_gaps}:
+        for gap in gaps:
+            if gap.length > max_valley_size:
+                max_valley_size = gap.length
+                max_valley = gap
+                max_valley_direction = direction
 
-    root.orientation = ROW
-    intervals = IntervalList(map(lambda b: Interval(b.x, b.x + b.width),
-                                 bboxes))
-    if len(intervals) == 1:
+    if max_valley is None:
+        root.bboxes = bboxes
         return
 
+    root.children = [BaseXYNode(), BaseXYNode()]
+    bbox_group1, bbox_group2 = [], []
+
+    if max_valley_direction == X:
+        root.cut = Cut(Rectangle(max_valley.begin, world_bbox.y,
+                                 max_valley.length, world_bbox.height), X)
+        for bbox in bboxes:
+            group = bbox_group2 if bbox.x >= max_valley.end else bbox_group1
+            group.append(bbox)
+
+    else:
+        root.cut = Cut(Rectangle(world_bbox.x, max_valley.begin,
+                                 world_bbox.width, max_valley.length), Y)
+        for bbox in bboxes:
+            group = bbox_group2 if bbox.y >= max_valley.end else bbox_group1
+            group.append(bbox)
+
+    for child in self.children:
+        build_xy_tree(bbox_group1, child)
 

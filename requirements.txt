@@ -7,3 +7,5 @@ wsgiref==0.1.2
 ujson
 pytest
 zhon
+tox
+py>=1.4.15

@@ -6,8 +6,8 @@ from collections import Counter
 # third party related imports
 
 # local library imports
-from Point import Point
-from Rectangle import Rectangle
+from ..Point import Point
+from ..Rectangle import Rectangle
 
 
 class IAgglomeratable(object):

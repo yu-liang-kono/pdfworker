@@ -206,3 +206,21 @@ class Rectangle(object):
         return self.x == other.x and self.y == other.y and \
                self.w == other.w and self.h == other.h
 
+
+class TextRectangle(Rectangle):
+    """A utility data structure for bounding box containing text.
+
+    Attributes:
+        t: The text in the bounding box.
+
+    """
+
+    def __init__(self, x, y, w, h, t):
+
+        super(TextRectangle, self).__init__(x, y, w, h)
+        self._t = t
+
+    @property
+    def t(self):
+
+        return self._t

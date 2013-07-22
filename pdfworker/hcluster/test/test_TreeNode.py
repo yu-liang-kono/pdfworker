@@ -5,8 +5,7 @@
 # third party related imports
 
 # local library imports
-from ..hcluster import TreeNode, create_dendrogram
-from ..Rectangle import Rectangle
+from ..hcluster import TreeNode, create_dendrogram, Rectangle
 
 
 class TestTreeNode(object):
