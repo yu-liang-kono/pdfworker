@@ -206,6 +206,37 @@ class Rectangle(object):
         return self.x == other.x and self.y == other.y and \
                self.w == other.w and self.h == other.h
 
+    def __hash__(self):
+        """Use Rectangle as dict key."""
+
+        return hash((self.x, self.y, self.w, self.h))
+
+    def x_distance(self, other):
+        """The distance between rectangles projected on x-axis."""
+
+        line1 = (self.x, self.x + self.w)
+        line2 = (other.x, other.x + other.w)
+
+        if line1[1] < line2[0]:
+            return line2[0] - line1[1]
+        elif line1[0] > line2[1]:
+            return line1[0] - line2[1]
+
+        return 0
+
+    def y_distance(self, other):
+        """The distance between rectangles projected on y-axis."""
+
+        line1 = (self.y, self.y + self.h)
+        line2 = (other.y, other.y + other.h)
+
+        if line1[1] < line2[0]:
+            return line2[0] - line1[1]
+        elif line1[0] > line2[1]:
+            return line1[0] - line2[1]
+
+        return 0
+
 
 class TextRectangle(Rectangle):
     """A utility data structure for bounding box containing text.
@@ -214,6 +245,10 @@ class TextRectangle(Rectangle):
         t: The text in the bounding box.
 
     """
+
+    ROW = 0
+    COL = 1
+    UNKNOWN = 2
 
     def __init__(self, x, y, w, h, t):
 
@@ -224,3 +259,15 @@ class TextRectangle(Rectangle):
     def t(self):
 
         return self._t
+
+    @property
+    def orientation(self):
+
+        if len(self.t) > 1:
+            if self.w >= self.h:
+                return self.ROW
+
+            return self.COL
+
+        return self.UNKNOWN
+
